@@ -369,7 +369,8 @@ class RightControlPanel(QWidget):
         self.transparencySlider.setValue(100)
         self.hideLandmarkIndexButton = QPushButton("Hide Landmark Index")
         self.runFacialLandmarkDetectionButton = QPushButton("Run Facial Landmark Detection")
-        buttons = [self.transparencySlider, self.hideLandmarkIndexButton, self.runFacialLandmarkDetectionButton]
+        self.addPupilButton = QPushButton("Add Pupil")
+        buttons = [self.transparencySlider, self.hideLandmarkIndexButton, self.runFacialLandmarkDetectionButton, self.addPupilButton]
         maxWidth = 200
         for button in buttons:
             layout.addWidget(button)
@@ -388,6 +389,7 @@ class RightControlPanel(QWidget):
         self.transparencySlider.valueChanged.connect(self.mainWindow.set_transparency)
         self.runFacialLandmarkDetectionButton.clicked.connect(self.mainWindow.run_facial_landmark_detection)
         self.hideLandmarkIndexButton.clicked.connect(self.mainWindow.hide_landmarks)
+        self.addPupilButton.clicked.connect(self.mainWindow.add_pupil)
 
 
 class BottomControlPanel(QWidget):
