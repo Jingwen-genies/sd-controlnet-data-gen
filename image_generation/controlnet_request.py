@@ -3,8 +3,11 @@ import cv2
 import base64
 import requests
 from PIL import Image
-
-from avatar_generation.image_generation.prompt import positive_prompt
+import rootutils
+import os
+project_root = rootutils.setup_root(search_from=__file__, indicator=".project-root", dotenv=True, pythonpath=True, cwd=False)
+os.chdir(project_root)
+from avatar_generation.image_generation.prompt import positive_prompt, negative_prompt
 
 """
     To use this example make sure you've done the following steps before executing:
@@ -27,12 +30,12 @@ class ControlnetRequest:
 
         self.sd_model_checkpoint = "v1-5-pruned-emaonly.safetensors"
         self.control_net_checkpoint = "control_v11p_sd15_openpose"
-        self.preprocess_module = "openpose_faceonly"
+        self.preprocess_module = "none"
 
     def build_body(self):
         self.body = {
             "prompt": self.prompt + " " + positive_prompt,
-            "negative_prompt": "",
+            "negative_prompt": negative_prompt,
             "batch_size": self.batch_size,
             "steps": self.steps,
             "cfg_scale": 7,
@@ -75,8 +78,8 @@ class ControlnetRequest:
 
 
 if __name__ == '__main__':
-    path = 'stock_mountain.png'
-    prompt = 'a large avalanche'
+    path = './avatar_generation/inputs/avatar-0001-animeBoy_head_view_0_controlInput.png'
+    prompt = 'a girl with blond hair and blue eyes'
 
     control_net = ControlnetRequest(prompt, path)
     control_net.build_body()

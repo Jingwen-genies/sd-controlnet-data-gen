@@ -1,7 +1,8 @@
 import sys
-import json
+from pathlib import Path
+import boto3
+import logging
 from PyQt5.QtWidgets import (
-    QFileDialog,
     QApplication,
     QMainWindow,
     QGraphicsView,
@@ -12,16 +13,32 @@ from PyQt5.QtWidgets import (
     QWidget,
     QGraphicsPixmapItem,
     QSlider,
+    QCheckBox,
+    QAction,
+    QFrame,
+    QLabel, QLineEdit, QMessageBox
 )
 
-from PyQt5.QtGui import QPixmap, QPainter, QIcon
-from PyQt5.QtCore import QDir, Qt, pyqtSignal, QTimer
+from PyQt5.QtGui import QPixmap, QPainter
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 import dataclasses
 from typing import List
+import os
+import rootutils
+import warnings
+import csv
 
-from utils import read_openpose, read_json, write_json
-from pose import FacialLandmarks
-# from client import runtime_sm_client, create_json_request, get_landmarks_from_response
+warnings.filterwarnings("ignore", category=FutureWarning, module="pytorch_lightning.utilities.distributed",
+                        message=".*rank_zero_only has been deprecated.*")
+project_root = rootutils.setup_root(search_from=__file__, indicator=".project-root", dotenv=True, pythonpath=True,
+                                    cwd=False)
+os.chdir(project_root)
+from avatar_generation.support.utils import read_openpose, read_json, write_json, generate_csv
+from avatar_generation.UI.facial_landmarks import FacialLandmarks
+from avatar_generation.UI.bbox import Bbox
+# from avatar_generation.UI.keypoint import Keypoint
+from avatar_generation.UI.client import create_json_request, get_landmarks_from_response
+
 
 @dataclasses.dataclass
 class csvRow:
@@ -34,73 +51,168 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Pose annotation tool")
-        self.setGeometry(100, 100, 1500, 1024)  # 确保主窗口足够大
+        self.runtime_sm_client = boto3.client(service_name="sagemaker-runtime")
+        self.setGeometry(0, 0, 1280, 720)  # 确保主窗口足够大
         self.hButtonSpace = 10  # 控制按钮之间的间距
         self.hStretch = 1  # 控制按钮之间的弹性空间
-        self.csvData_list:List[csvRow] = []
+        self.csvData_list: List[csvRow] = []
         self.currentIndex = -1
         self.facialLandmarks = None
-        self.json = None
-        self.hide = False
         self.detectedLandmarks = None
+        self.bbox = None
+        self.json_dictionary = None
+        self.labeling_control_image = False
+        self.csv_path = ""
 
+        menuBar = self.menuBar()
+        fileMenu = menuBar.addMenu('&File')
 
-        # 创建中央widget和布局
+        loadControlImageAction = QAction('&Label Control Images', self)
+        loadControlImageAction.triggered.connect(self.load_control_image_csv)
+
+        loadTraningImageAction = QAction('&Label Training Images', self)
+        loadTraningImageAction.triggered.connect(self.load_training_image_csv)
+
+        fileMenu.addAction(loadControlImageAction)
+        fileMenu.addAction(loadTraningImageAction)
+
         centralWidget = QWidget()
         self.setCentralWidget(centralWidget)
-        mainVerticalLayout = QVBoxLayout(centralWidget)
 
-        topHorizontalLayout = QHBoxLayout()
-        # 创建并添加控制面板到主布局
-        self.leftControlPanel = LeftControlPanel(self)
+        mainVerticalLayout = QHBoxLayout(centralWidget)
 
-        # 中央图片显示区域
-        self.imageViewer = ImageViewer()  # 自定义的ImageViewer类
+        self.imageViewer = ImageViewer()
+
         self.imageViewer.requestPreviousImage.connect(self.prev_image)
         self.imageViewer.requestNextImage.connect(self.next_image)
+        self.imageViewer.graphicsView.bboxModeChanged.connect(self.updateBboxSwitch)
+
 
         self.rightControlPanel = RightControlPanel(self)
 
-        topHorizontalLayout.addWidget(self.leftControlPanel)
-        topHorizontalLayout.addWidget(self.imageViewer, 1)  # ImageViewer占据多余空间
-        topHorizontalLayout.addWidget(self.rightControlPanel)
+        mainVerticalLayout.addWidget(self.imageViewer, 1)
+        mainVerticalLayout.addWidget(self.rightControlPanel)
 
-        # 将水平布局添加到垂直布局
-        mainVerticalLayout.addLayout(topHorizontalLayout)
+        mainVerticalLayout.addLayout(mainVerticalLayout)
 
-        self.bottomControlPanel = BottomControlPanel(self)
-        mainVerticalLayout.addWidget(self.bottomControlPanel)
+        # set default csv as training csv (default labeling training data)
+        self.load_training_image_csv()
 
 
-    def set_bbox_transparency(self, value):
-        pass
 
-    def add_bounding_box(self):
-        # TODO: add bounding box
-        pass
+    # def mousePressEvent(self, a0):
+    #     if a0.button() == Qt.RightButton:
+    #         print("right button clicked")
+    #         self.imageViewer.graphicsView.isBboxMode = not self.imageViewer.graphicsView.isBboxMode
+    #         print(f"bbox mode: {self.imageViewer.graphicsView.isBboxMode}")
+    #         self.rightControlPanel.addBboxSwitch.setChecked(self.imageViewer.graphicsView.isBboxMode)
 
-    def save_bounding_box(self):
-        pass
+    def updateBboxSwitch(self, isBboxMode):
+        self.rightControlPanel.addBboxSwitch.setChecked(isBboxMode)
 
-    def run_bounding_box_detection(self):
-        pass
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Left or event.key() == Qt.Key_A:
+            self.prev_image()
+        elif event.key() == Qt.Key_Right or event.key() == Qt.Key_D:
+            self.next_image()
+        elif event.key() == Qt.Key_E:
+            self.hide_landmarks()
+            self.run_facial_landmark_detection()
+            self.replace_landmark()
+            self.add_left_pupil()
+            self.add_right_pupil()
+        # Enter key runs jump to index and numpad enter key runs save landmarks
+        elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            self.jump_to_index()
+        # save the landmarks using control + s
+        elif event.key() == Qt.Key_S and event.modifiers() == Qt.ControlModifier:
+            self.save_landmarks()
+        elif event.key() == Qt.Key_V:
+            self.setVisibility(2)
+        else:
+            super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        self.write_data_to_csv()
+        event.accept()
+
+    def updateBboxModeCheckbox(self, isBboxMode):
+        self.rightControlPanel.addBboxSwitch.setChecked(isBboxMode)
+
+    def write_data_to_csv(self):
+        # write the data to self.csvData_list to the csv file
+        with open(self.csv_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["image", "landmark", "is_kept"])
+            for row in self.csvData_list:
+                is_kept_str = str(row.is_kept).strip().strip('"')
+                writer.writerow([row.image_path, row.landmark, is_kept_str])
+
+    def resetScene(self):
+        # reset the QGraphicsScene and Qgraphiitems
+        print("Resetting scene")
+        self.imageViewer.graphicsScene.clear()
+        self.imageViewer.graphicsView.scaleFactor = 1.0
+        self.facialLandmarks = None
+        self.detectedLandmarks = None
+        self.bbox = None
+        self.json_dictionary = None
+        print(f"reset scaled factor to: {self.imageViewer.graphicsView.scaleFactor}")
+
+    def toggleBboxMode(self, enabled):
+        print("toggleBboxMode: ", enabled)
+        self.imageViewer.graphicsView.isBboxMode = enabled
+
+    def saveBbox(self):
+        try:
+            currentBbox = self.imageViewer.graphicsView.currentBbox
+            if currentBbox:
+                # Assuming you have a method or logic to serialize and save the bbox
+                # For demonstration, simply printing the bbox coordinates
+                print(f"Saving BBox: {currentBbox.bbox}")
+                # save the bbox with format (x1, y1, x2, y2) as a tuple to self.bbox, where x1, y1 is the topleft point
+                # and x2,y2 is the bottomright point
+                self.bbox = currentBbox
+                # Reset or clear the bbox after saving as needed
+                self.imageViewer.graphicsView.currentBbox = None
+        except Exception as e:
+            print("Error saving bbox:", e)
 
     def run_facial_landmark_detection(self):
-        pass
-        # image_paths = [self.csvData_list[self.currentIndex].image_path]
-        # payload = create_json_request(paths=image_paths, radius=3, show_kpt_idx=True)
-        # endpoint_name = "facial-landmark-app-v2"
-        # results = runtime_sm_client.invoke_endpoint(
-        #     EndpointName=endpoint_name,
-        #     ContentType="application/json",
-        #     Body=payload,
-        # )
-        # detected_landmarks = get_landmarks_from_response(results)
-        # self.detectedLandmarks = FacialLandmarks(self.graphicsScene, detected_landmarks, sceneWidth=512, sceneHeight=512, color=Qt.green)
-        # # TODO: plot the landmarks on the image?
+        print("Running facial landmark detection")
+        image_paths = [self.csvData_list[self.currentIndex].image_path]
+        if self.bbox:
+            x1, y1, x2, y2 = self.bbox.bbox
+            bboxes = [[x1, y1, x2, y2]]
+            payload = create_json_request(image_paths, bounding_box=bboxes)
+        else:
+            payload = create_json_request(paths=image_paths, radius=3, show_kpt_idx=True)
+        endpoint_name = "facial-landmark-app-v2"
+        results = self.runtime_sm_client.invoke_endpoint(
+            EndpointName=endpoint_name,
+            ContentType="application/json",
+            Body=payload,
+        )
+        detected_landmarks = get_landmarks_from_response(results)
+        self.detectedLandmarks = FacialLandmarks(
+            scene=self.imageViewer.graphicsScene,
+            landmarks=detected_landmarks,
+            sceneWidth=512,
+            sceneHeight=512,
+            color=Qt.green
+        )
+        # TODO: plot the landmarks on the image?
+        self.draw_detected_landmarks()
 
+    def draw_detected_landmarks(self):
+        if self.detectedLandmarks:
+            self.detectedLandmarks.draw()
 
     def replace_landmark(self):
+        if self.facialLandmarks:
+            self.facialLandmarks.hide()
+            self.facialLandmarks.hideIndex()
+        self.detectedLandmarks.color = Qt.yellow
         self.facialLandmarks = self.detectedLandmarks
         self.facialLandmarks.draw()
 
@@ -111,33 +223,47 @@ class MainWindow(QMainWindow):
             self.facialLandmarks.setTransparency(alpha)
 
     def hide_landmarks(self):
-        # click once to hide, click again to show
-        if self.hide:
+        # Assume self.facialLandmarks.isVisible() checks if landmarks are currently visible
+        if self.facialLandmarks.isVisiable:
             self.facialLandmarks.hide()
-            self.hide = False
+            self.facialLandmarks.hideIndex()
         else:
             self.facialLandmarks.show()
-            self.hide = True
+            self.facialLandmarks.showIndex()
 
-    def discard_image(self):
-        self.csvData_list[self.currentIndex].is_kept = False
+    def discard_image(self, status):
+        is_kept = True if status == 0 else False  # status shows the is_discard status, 2 means discard, 0 means keep
+        self.csvData_list[self.currentIndex].is_kept = is_kept
+        print(f"Clicked discard image switch: {self.csvData_list[self.currentIndex].image_path} with status: {status}, "
+              f"is_kept: {self.csvData_list[self.currentIndex].is_kept}")
 
+    def load_control_image_csv(self):
+        self.labeling_control_image = True
+        csv_file = Path(
+            r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\inputs\synthetic_data_info.csv")
+        self.csv_path = csv_file
+        if not csv_file.exists():
+            input_folder = Path(r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\inputs")
+            generate_csv(input_folder, csv_file, overwrite=True, type="same_folder")
+        with open(csv_file, 'r') as file:
+            for line in file:
+                if line.startswith('image'):
+                    continue
+                data = line.split(',')
 
+                self.csvData_list.append(csvRow(data[0], data[1], data[2]))
+        self.currentIndex = 0
+        print(f"loading 0th image: {self.csvData_list[0].image_path}")
+        self.update_curr_img_pose()
 
-    def load_csv(self):
-        # csv_file = QFileDialog.getOpenFileName(self, 'Open CSV', QDir.currentPath(), 'CSV Files (*.csv)')
-        # if csv_file[0]:
-        #     with open(csv_file[0], 'r') as file:
-        #         for line in file:
-        #             if line.startswith('image'):
-        #                 continue
-        #             data = line.split(',')
-        #             self.csvData_list.append(csvRow(data[0], data[1], data[2]))
-        #     self.currentIndex = 0
-        #     self.update_curr_img_pose()
-        # else:
-        #     print("No file selected")
-        csv_file = r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\outputs\synthetic_data_info.csv"
+    def load_training_image_csv(self):
+        self.labeling_control_image = False
+        csv_file = Path(
+            r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\outputs\synthetic_data_info.csv")
+        self.csv_path = csv_file
+        if not csv_file.exists():
+            input_folder = Path(r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\outputs")
+            generate_csv(input_folder, csv_file, overwrite=True)
         with open(csv_file, 'r') as file:
             for line in file:
                 if line.startswith('image'):
@@ -148,94 +274,290 @@ class MainWindow(QMainWindow):
         self.update_curr_img_pose()
 
     def update_curr_img_pose(self):
+        print("Loading image at index:", self.currentIndex)
+        print(f"Current image path: {self.csvData_list[self.currentIndex].image_path}")
         if self.currentIndex < 0 or self.currentIndex >= len(self.csvData_list):
             return
         self.imageViewer.load_image(self.csvData_list, self.currentIndex)
         self.load_json()
+        # get the subfolder and the image name
+        currentImagePath = Path(self.csvData_list[self.currentIndex].image_path)
+
+        image_name = currentImagePath.parent.name + "/" + currentImagePath.name
+        self.rightControlPanel.imagePathLabel.setText(f"Image Path: {image_name}")
+        self.rightControlPanel.currentIndexLabel.setText(f"Index: {self.currentIndex + 1} / {len(self.csvData_list)}")
+
+        # setup the toggle button values
+        self.toggleBboxMode(False)
+        self.toggleNose(True)
+        self.toggleEyes(True)
+        self.toggleMouth(True)
+        self.toggleOutline(True)
+        self.rightControlPanel.showEyesButton.setChecked(True)
+        self.rightControlPanel.showNoseButton.setChecked(True)
+        self.rightControlPanel.showMouseButton.setChecked(True)
+        self.rightControlPanel.showOutlineButton.setChecked(True)
+        self.rightControlPanel.addBboxSwitch.setChecked(False)
+
+        # assign opposite value to the is_discard value of self.csvData_list[self.currentIndex].is_kept
+        # strip the string and compare with "True" to get the boolean value
+        is_kept = self.csvData_list[self.currentIndex].is_kept
+        if type(is_kept) == str:
+            is_kept = is_kept.strip().strip('"') == "True"
+        # is_kept = self.csvData_list[self.currentIndex].is_kept.strip().strip('"') == "True"
+
+        is_discard = not is_kept
+        self.rightControlPanel.discardButton.setChecked(is_discard)
 
     def prev_image(self):
+        print("Previous image")
+        self.save_landmarks()
         self.currentIndex -= 1
+        self.resetScene()
         self.update_curr_img_pose()
 
     def next_image(self):
+        print("Next image")
+        self.save_landmarks()
         self.currentIndex += 1
+        self.resetScene()
         self.update_curr_img_pose()
 
     def load_json(self):
         if self.currentIndex < 0 or self.currentIndex >= len(self.csvData_list):
             return
         landmark_path = self.csvData_list[self.currentIndex].landmark
-        print(landmark_path)
+        currentImagePath = self.csvData_list[self.currentIndex].image_path
+        print("landmark_path is %s", landmark_path)
         self.json_dictionary = read_json(landmark_path)
-        landmarks = read_openpose(landmark_path)
+        landmarks, bbox = read_openpose(landmark_path)
+        # print(f"Landmarks loaded from file: {landmark_path}:")
+        # print(f"Landmarks: {landmarks}")
         scene_width = 512
         scene_height = 512
-        if landmarks is not None:
+        if landmarks is not None and len(landmarks) >= 68:
             # Note that here the landmarks are scaled as uv coordinates (0-1)
-            # 假设read_openpose返回的是一个包含(x, y, visibility)的列表
-            self.facialLandmarks = FacialLandmarks(self.imageViewer.graphicsScene, landmarks, sceneWidth=scene_width, sceneHeight=scene_height )
+            self.facialLandmarks = FacialLandmarks(
+                self.imageViewer.graphicsScene,
+                landmarks,
+                sceneWidth=scene_width,
+                sceneHeight=scene_height
+            )
+
+            # for i in range(len(self.facialLandmarks.landmarks)):
+            #     print(f"keypoint {i}: {i + 24} {self.facialLandmarks.landmarks[i].visibility}")
             self.facialLandmarks.draw()
+            if bbox is not None:
+                x1, y1, x2, y2 = bbox
+                self.bbox = Bbox(self.imageViewer.graphicsScene)
+                self.bbox.createOrUpdate(x1, y1, x2, y2)
         else:
-            print("No landmark found")
+            logging.warning("No initial landmark found")
 
     def updateFacialLandmarks(self, scaleFactor):
-        currentImageWidth = self.imageViewer.graphicsView.getCurrentImageWidth()  # 需要自己实现获取当前图片宽度的方法
-        currentImageHeight = self.imageViewer.getCurrentImageHeight()  # 需要自己实现获取当前图片高度的方法
+        currentImageWidth = self.imageViewer.graphicsView.getCurrentImageWidth()
+        currentImageHeight = self.imageViewer.getCurrentImageHeight()
         self.facialLandmarks.updateKeypoints(scaleFactor, currentImageWidth, currentImageHeight)
 
     def save_landmarks(self):
+        print("Saving landmarks")
+        if self.labeling_control_image and not self.facialLandmarks:
+            self.replace_landmark()
         landmarks = self.facialLandmarks.getLandmarks()
+        currentImagePath = self.csvData_list[self.currentIndex].image_path
+        # count number of invisible keypoints
+        invisible_count = 0
+        for i in range(len(self.facialLandmarks.landmarks)):
+            if self.facialLandmarks.landmarks[i].visibility == 1.0:
+                invisible_count += 1
+        # reset all to visiable if number of invisible keypoints is larger then 30
+        if invisible_count > 50:
+            for kp in self.facialLandmarks.landmarks:
+                kp.visibility = 2
+
+        if "40" in currentImagePath:
+            invisible_group = self.facialLandmarks.landmarks[0: 8]
+        elif "320" in currentImagePath:
+            invisible_group = self.facialLandmarks.landmarks[9: 17]
+        else:
+            invisible_group = []
+        for kp in invisible_group:
+            kp.setVisibility(1)
+
+        if not self.json_dictionary:
+            self.json_dictionary = {"people": [{}]}
+
+        self.saveBbox()
+        if self.bbox:
+            bbox = self.bbox.bbox
+            self.json_dictionary["people"][0]['bbox'] = bbox
+
+        self.json_dictionary['canvas_width'] = 512
+        self.json_dictionary['canvas_height'] = 512
+        self.json_dictionary['canvas_height'] = 512
         self.json_dictionary["people"][0]['face_keypoints_2d'] = landmarks
         # print(self.json_dictionary)
         json_path = self.csvData_list[self.currentIndex].landmark
-        print("json path:", json_path)
+        print("json path: %s", json_path)
         # Check if the JSON file path is a valid string
-        if isinstance(json_path, str):
-            # Attempt to write the JSON dictionary to the specified file
-            try:
-                write_json(self.json_dictionary, json_path)
-                print("Landmarks saved to JSON file successfully.")
-            except Exception as e:
-                print("Error:", e)
-        else:
-            print("Error: Invalid JSON file path.")
+        try:
+            write_json(self.json_dictionary, json_path)
+            print("Landmarks saved to JSON file successfully.")
+        except Exception as e:
+            logging.error("Error:", e)
+
+    def setVisibility(self, state):
+        if self.facialLandmarks:
+            self.facialLandmarks.setVisibility(state)
+            self.facialLandmarks.draw()
+
+    def add_left_pupil(self):
+        if self.facialLandmarks:
+            self.facialLandmarks.addLeftPupil()
+            self.facialLandmarks.draw()
+
+    def add_right_pupil(self):
+        if self.facialLandmarks:
+            self.facialLandmarks.addRightPupil()
+            self.facialLandmarks.draw()
+
+    def save_landmark_images(self):
+        if self.facialLandmarks:
+            input_path = Path(self.csvData_list[self.currentIndex].image_path)
+            # add _control_input at the end of the input_path (pathlib.Path object)
+            tgt_path = input_path.parent / (input_path.stem + "_controlInput" + input_path.suffix)
+            # save the landmarks image to the target path
+            self.facialLandmarks.saveImage(tgt_path.as_posix())
+
+    def toggleEyes(self, state):
+        """
+        Set visibility of eyes, here visibility is not the visibility in annotations, but to show hide them on canvas。
+        """
+        if self.facialLandmarks:
+            self.facialLandmarks.setSceneVisibility(state, "eyes")
+            self.facialLandmarks.draw()
+
+    def toggleNose(self, state):
+        if self.facialLandmarks:
+            self.facialLandmarks.setSceneVisibility(state, "nose")
+            self.facialLandmarks.draw()
+
+    def toggleMouth(self, state):
+        if self.facialLandmarks:
+            self.facialLandmarks.setSceneVisibility(state, "mouth")
+            self.facialLandmarks.draw()
+
+    def toggleOutline(self, state):
+        if self.facialLandmarks:
+            self.facialLandmarks.setSceneVisibility(state, "outline")
+            self.facialLandmarks.draw()
+
+    # Add this method to the MainWindow class
+    def jump_to_index(self):
+        try:
+            index = int(self.rightControlPanel.indexInput.text()) - 1  # Convert to 0-based index
+            if 0 <= index < len(self.csvData_list):
+                print("Jumping to index:", index)
+                self.currentIndex = index
+                self.update_curr_img_pose()
+            else:
+                QMessageBox.warning(self, "Error", "Index out of range.")
+        except ValueError:
+            QMessageBox.warning(self, "Error", "Please enter a valid number.")
+
+    def selectAll(self):
+        if self.facialLandmarks:
+            self.facialLandmarks.selectAll()
+            self.facialLandmarks.draw()
 
 
 class CustomGraphicsView(QGraphicsView):
-    zoomChanged = pyqtSignal(float)  # 定义一个新的信号，传递缩放因子
+    zoomChanged = pyqtSignal(float)
+    bboxModeChanged = pyqtSignal(bool)  # Define a new signal
 
     def __init__(self, parent=None):
         super(CustomGraphicsView, self).__init__(parent)
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
-        # 设置缩放的初始级别
         self.scaleFactor = 1.0
-        # self.userHasZoomed = False  # 跟踪用户是否已经进行了缩放
-        self.shouldFitInView = True  # 初始时允许fitInView
+        self.shouldFitInView = True
+
+        self.isBboxMode = False
+        self.startPoint = None
+        self.currentBbox = None
+
+        # For panning
+        self._panning = False
+        self._panStartX = 0
+        self._panStartY = 0
+
+    def mousePressEvent(self, event):
+        print("\nreceived mouse press event")
+        if event.button() == Qt.MiddleButton:
+            print("middle button clicked")
+            self._panning = True
+            self._panStartX, self._panStartY = event.x(), event.y()
+            self.setCursor(Qt.ClosedHandCursor)
+        elif event.button() == Qt.RightButton:
+            print("RightButten clicked")
+            self.isBboxMode = not self.isBboxMode
+            print(f"bbox mode: {self.isBboxMode}")
+            self.bboxModeChanged.emit(self.isBboxMode)
+        elif event.button() == Qt.LeftButton and self.isBboxMode:
+            print("LeftButten clicked and in bbox mode")
+            self.startPoint = self.mapToScene(event.pos())
+            if self.currentBbox:
+                self.currentBbox = None
+            self.currentBbox = Bbox(self.scene())
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._panning:
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - (event.x() - self._panStartX))
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - (event.y() - self._panStartY))
+            self._panStartX, self._panStartY = event.x(), event.y()
+        elif self.isBboxMode and self.startPoint:
+            endPoint = self.mapToScene(event.pos())
+            self.currentBbox.createOrUpdate(self.startPoint.x(), self.startPoint.y(), endPoint.x(), endPoint.y())
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MiddleButton:
+            self._panning = False
+            self.setCursor(Qt.ArrowCursor)
+        elif self.isBboxMode:
+            self.startPoint = None
+        else:
+            super().mouseReleaseEvent(event)
+
     def resizeEvent(self, event):
-        # 在窗口大小改变时调整视图
         if self.shouldFitInView and self.scene():
             self.fitInView(self.sceneRect(), Qt.KeepAspectRatio)
         super().resizeEvent(event)
 
     def wheelEvent(self, event):
         self.shouldFitInView = False
-        # 每次缩放的比例因子
         zoomInFactor = 1.25
         zoomOutFactor = 1 / zoomInFactor
 
-        # 设置缩放的限制条件
         minFactor = 0.2
-        maxFactor = 5.0
+        maxFactor = 10.0
 
-        # 获取滚轮的滚动方向来决定是放大还是缩小
+        # get the wheel data, positive means zoom in, negative means zoom out
         if event.angleDelta().y() > 0:
+            print("zoom in")
             zoomFactor = zoomInFactor
         else:
+            print("zoom out")
             zoomFactor = zoomOutFactor
 
-        # 计算新的缩放级别并应用限制
         newScaleFactor = self.scaleFactor * zoomFactor
+        print(
+            f"newScaleFactor: {newScaleFactor}, self.scaleFactor:{self.scaleFactor}, minFactor:{minFactor}, maxFactor: {maxFactor}")
         if newScaleFactor < minFactor or newScaleFactor > maxFactor:
+            print(f"newScaleFactor: {newScaleFactor},minFactor:{minFactor}, maxFactor: {maxFactor}")
+            print("Zoom factor out of range")
             return
 
         self.scale(zoomFactor, zoomFactor)
@@ -252,15 +574,15 @@ class ImageViewer(QWidget):
     """
     center image and the prev, next button 中央图片显示区域
     """
-    requestPreviousImage = pyqtSignal()  # 请求显示上一个图片的信号
-    requestNextImage = pyqtSignal()  # 请求显示下一个图片的信号
+    requestPreviousImage = pyqtSignal()
+    requestNextImage = pyqtSignal()
+
     def __init__(self, parent=None):
         super(ImageViewer, self).__init__(parent)
 
         # 使用CustomGraphicsView作为图片显示区域
-        self.graphicsView = CustomGraphicsView()
+        self.graphicsView = CustomGraphicsView(self)
         self.graphicsScene = QGraphicsScene(self)
-
 
         self.graphicsView.setScene(self.graphicsScene)
 
@@ -272,22 +594,18 @@ class ImageViewer(QWidget):
         # 设置导航按钮半透明
         self.prevButton.setWindowOpacity(0.5)
         self.nextButton.setWindowOpacity(0.5)
-        self.prevButton.setMinimumSize(30, 40)  # 设置最小宽度为60，最小高度为40
+        self.prevButton.setMinimumSize(30, 40)
         self.nextButton.setMinimumSize(30, 40)
 
         # 创建水平布局并添加组件
         layout = QHBoxLayout(self)
         layout.addWidget(self.prevButton)
-        layout.addWidget(self.graphicsView, 1)  # 加1使graphicsView可以扩展填充剩余空间
+        layout.addWidget(self.graphicsView, 1)
         layout.addWidget(self.nextButton)
-        layout.setContentsMargins(0, 0, 0, 0)  # 移除边距以使按钮更靠近边缘
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.prevButton.clicked.connect(self.requestPreviousImage.emit)
         self.nextButton.clicked.connect(self.requestNextImage.emit)
-        print("initializing the image viewer")
-        print("adjust botton postion")
-        print(f"size: {self.size()}")
-        print(f"height: {self.size().height()}")
         # 使用QTimer来确保在布局稳定后再调整按钮位置
         QTimer.singleShot(0, self.adjustButtonPositions)
 
@@ -295,73 +613,45 @@ class ImageViewer(QWidget):
         # 从文件加载图像
         pixmap = QPixmap(csvData_list[currentIndex].image_path)
 
-        # 调整图像大小到512x512，同时保持宽高比
         scaled_pixmap = pixmap.scaled(512, 512, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         pixmapItem = QGraphicsPixmapItem(scaled_pixmap)
 
-        # 将调整大小后的图像设置到QLabel上
         self.graphicsScene.addItem(pixmapItem)
 
-        # 居中显示图像（如果你想这样做的话）
         self.graphicsView.fitInView(pixmapItem, Qt.KeepAspectRatio)
-
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.adjustButtonPositions()
 
     def adjustButtonPositions(self):
-        # 假设initialViewHeight是ImageViewer的初始高度
         initialViewHeight = self.height()
 
         btnY = initialViewHeight // 2 - self.prevButton.height() // 2
-        print(f"adjusting height to {btnY}")
         self.prevButton.move(10, btnY)
         self.nextButton.move(self.width() - self.nextButton.width() - 10, btnY)
-
-
-class LeftControlPanel(QWidget):
-    def __init__(self, mainWindow, parent=None):
-        super(LeftControlPanel, self).__init__(parent)
-        self.mainWindow = mainWindow
-
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        # sliding scale for transparency
-        self.transparencySlider = QSlider(Qt.Horizontal)
-        self.transparencySlider.setRange(0, 100)
-        self.transparencySlider.setValue(100)
-        self.runBoundingBoxDetectionButton = QPushButton("Run Bounding Box Detection")
-        self.addBoundingBoxButton = QPushButton("Add Bounding Box")
-        buttons = [self.transparencySlider, self.runBoundingBoxDetectionButton, self.addBoundingBoxButton]
-        maxWidth = 200  # 控制元素的最大宽度
-        for button in buttons:
-            layout.addWidget(button)
-            button.setFixedWidth(maxWidth)
-
-        self.setFixedWidth(maxWidth + 20)
-
-
-        # 设置布局的间距和边距
-        layout.setSpacing(mainWindow.hButtonSpace)  # 设置控件之间的间距
-        layout.setContentsMargins(10, 10, 10, 10)  # 设置布局的边距
-        # 在添加了所有控件之后添加弹性空间
-        layout.addStretch(mainWindow.hStretch)
-
-        # 连接信号到槽
-        self.transparencySlider.valueChanged.connect(self.mainWindow.set_bbox_transparency)
-        self.runBoundingBoxDetectionButton.clicked.connect(self.mainWindow.run_bounding_box_detection)
-        self.addBoundingBoxButton.clicked.connect(self.mainWindow.add_bounding_box)
 
 
 class RightControlPanel(QWidget):
     def __init__(self, mainWindow, parent=None):
         super(RightControlPanel, self).__init__(parent)
+        self.maxWidth = 400
+
         self.mainWindow = mainWindow
 
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        self.layout = QVBoxLayout()
+        self.setLayout(self.layout)
+
+        # information and index jump session
+        self.imagePathLabel = QLabel("Image Path: ")
+        self.currentIndexLabel = QLabel("Index: 0 / 0")
+        self.indexInput = QLineEdit()
+        self.jumpButton = QPushButton("Jump To Index")
+        self.imagePathLabel.setWordWrap(True)
+
+        sub_layout1 = QHBoxLayout()
+        sub_layout1.addWidget(self.indexInput)
+        sub_layout1.addWidget(self.jumpButton)
 
         # sliding scale for transparency
         self.transparencySlider = QSlider(Qt.Horizontal)
@@ -369,68 +659,154 @@ class RightControlPanel(QWidget):
         self.transparencySlider.setValue(100)
         self.hideLandmarkIndexButton = QPushButton("Hide Landmark Index")
         self.runFacialLandmarkDetectionButton = QPushButton("Run Facial Landmark Detection")
-        self.addPupilButton = QPushButton("Add Pupil")
-        buttons = [self.transparencySlider, self.hideLandmarkIndexButton, self.runFacialLandmarkDetectionButton, self.addPupilButton]
-        maxWidth = 200
-        for button in buttons:
-            layout.addWidget(button)
-            button.setFixedWidth(maxWidth)
+        self.replaceButton = QPushButton("Replace Landmark")
+        self.loadInitialLandmarksButton = QPushButton("Load Initial Landmarks")
+        self.addLeftPupilButton = QPushButton("Add Left Pupil")
+        self.addRightPupilButton = QPushButton("Add Right Pupil")
 
-        self.setFixedWidth(maxWidth + 20)
+        self.visibleButton = QPushButton('Set Visible (2)', self)
+        self.invisibleButton = QPushButton('Set Invisible (1)', self)
+        self.nonExistButton = QPushButton('Set Not Existing (0)', self)
 
+        self.selectAllButton = QPushButton("Select All")
 
-        # 设置布局的间距和边距
-        layout.setSpacing(mainWindow.hButtonSpace)  # 设置控件之间的间距
-        layout.setContentsMargins(10, 10, 10, 10)  # 设置布局的边距
-        # 在添加了所有控件之后添加弹性空间
-        layout.addStretch(mainWindow.hStretch)
+        # control landmarks
+        self.showEyesButton = self.setupSwitch("Eyes", default=True)
+        self.showNoseButton = self.setupSwitch("Nose", default=True)
+        self.showMouseButton = self.setupSwitch("Mouth", default=True)
+        self.showOutlineButton = self.setupSwitch("Outline", default=True)
 
-        # 连接信号到槽
+        sub_layout2 = QHBoxLayout()
+        sub_layout2.addWidget(self.showEyesButton)
+        sub_layout2.addWidget(self.showNoseButton)
+        sub_layout2.addWidget(self.showMouseButton)
+        sub_layout2.addWidget(self.showOutlineButton)
+
+        self.addBboxSwitch = self.setupSwitch("Add BBox")
+        self.saveBboxButton = QPushButton("Save BBox")
+        sub_layout3 = QHBoxLayout()
+        sub_layout3.addWidget(self.addBboxSwitch)
+        sub_layout3.addWidget(self.saveBboxButton)
+
+        self.saveFacialLandmarkImage = QPushButton("Save Facial Landmark Image")
+        self.discardButton = self.setupSwitch("Discard Image", default=False)
+        self.saveButton = QPushButton("Save")
+
+        # informations
+        info_buttons = [
+            self.imagePathLabel,
+            self.currentIndexLabel,
+        ]
+        # buttons
+        landmark_buttons = [
+            self.transparencySlider,
+            self.hideLandmarkIndexButton,
+            self.runFacialLandmarkDetectionButton,
+            self.replaceButton,
+            self.addLeftPupilButton,
+            self.addRightPupilButton,
+            self.visibleButton,
+            self.invisibleButton,
+            self.nonExistButton,
+            self.selectAllButton,
+        ]
+        io_buttons = [self.discardButton, self.saveFacialLandmarkImage, self.saveButton]
+
+        ##################### Layout ############################
+        self.setupSection("Information", info_buttons, sub_layout1)
+        self.setupSection("Facial Landmarks", landmark_buttons, sub_layout2)
+        self.setupSection("Bbox", [], sub_layout3)
+        self.setupSection("Export", io_buttons)
+
+        self.setFixedWidth(self.maxWidth + 50)
+
+        self.layout.setSpacing(mainWindow.hButtonSpace)  # 设置控件之间的间距
+        self.layout.setContentsMargins(10, 10, 10, 10)  # 设置布局的边距
+        self.layout.addStretch(mainWindow.hStretch)
+
         self.transparencySlider.valueChanged.connect(self.mainWindow.set_transparency)
+        self.jumpButton.clicked.connect(self.mainWindow.jump_to_index)
+
         self.runFacialLandmarkDetectionButton.clicked.connect(self.mainWindow.run_facial_landmark_detection)
         self.hideLandmarkIndexButton.clicked.connect(self.mainWindow.hide_landmarks)
-        self.addPupilButton.clicked.connect(self.mainWindow.add_pupil)
+        self.replaceButton.clicked.connect(self.mainWindow.replace_landmark)
+
+        self.addLeftPupilButton.clicked.connect(self.mainWindow.add_left_pupil)
+        self.addRightPupilButton.clicked.connect(self.mainWindow.add_right_pupil)
+
+        self.nonExistButton.clicked.connect(lambda: self.mainWindow.setVisibility(0))
+        self.invisibleButton.clicked.connect(lambda: self.mainWindow.setVisibility(1))
+        self.visibleButton.clicked.connect(lambda: self.mainWindow.setVisibility(2))
+
+        self.selectAllButton.clicked.connect(lambda: self.mainWindow.selectAll())
+
+        self.showEyesButton.stateChanged.connect(self.mainWindow.toggleEyes)
+        self.showNoseButton.stateChanged.connect(self.mainWindow.toggleNose)
+        self.showMouseButton.stateChanged.connect(self.mainWindow.toggleMouth)
+        self.showOutlineButton.stateChanged.connect(self.mainWindow.toggleOutline)
+
+        self.addBboxSwitch.stateChanged.connect(self.mainWindow.toggleBboxMode)
+        self.saveBboxButton.clicked.connect(self.mainWindow.saveBbox)
+
+        self.saveFacialLandmarkImage.clicked.connect(self.mainWindow.save_landmark_images)
+        self.discardButton.stateChanged.connect(self.mainWindow.discard_image)
+        self.saveButton.clicked.connect(self.mainWindow.save_landmarks)
+
+    def setupDivider(self, name):
+        label = QLabel(name)
+        self.layout.addWidget(label)
+        h_divider = QFrame()
+        h_divider.setFrameShape(QFrame.HLine)
+        h_divider.setFrameShadow(QFrame.Sunken)
+        h_divider.setFixedWidth(self.maxWidth)
+        self.layout.addWidget(h_divider)
+
+    def setupSection(self, name, widget_list, sub_layout=None):
+        self.setupDivider(name)
+        for button in widget_list:
+            self.layout.addWidget(button)
+            button.setFixedWidth(self.maxWidth)
+        if sub_layout:
+            self.layout.addLayout(sub_layout)
+        self.layout.addSpacing(30)
+
+    def setupSwitch(self, name, default=False):
+        switch = QCheckBox(name, self)
+        switch.setCheckable(True)
+        # set default value
+        switch.setChecked(default)
+        switch.setStyleSheet("""
+            QCheckBox::indicator {
+                width: 40px;
+                height: 20px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #0078d7;
+            }
+            QCheckBox::indicator:unchecked {
+                background-color: #cccccc;
+            }
+        """)
+        return switch
 
 
-class BottomControlPanel(QWidget):
-    discardSignal = pyqtSignal()  # 丢弃图片的信号
-    saveSignal = pyqtSignal()  # 保存标记的信号
-    replaceSignal = pyqtSignal()  # 替换标记的信号
+def setup_logger():
+    # Create a custom logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
 
-    def __init__(self, mainWindow, parent=None):
-        super(BottomControlPanel, self).__init__(parent)
-        self.mainWindow = mainWindow
-        # 创建垂直布局
-        layout = QHBoxLayout()
-        # 设置布局
-        self.setLayout(layout)
-        layout.addStretch()
+    # Create handlers
+    c_handler = logging.StreamHandler()
 
-        # 创建按钮
-        self.discardButton = QPushButton("Discard Image")
-        self.saveButton = QPushButton("Save")
-        self.replaceButton = QPushButton("Replace Landmark")
-        buttons = [self.discardButton, self.saveButton, self.replaceButton]
-
-        # 添加按钮到布局
-        maxWidth = 200  # 控制元素的最大宽度
-        for button in buttons:
-            layout.addWidget(button)
-            button.setFixedWidth(maxWidth)
-        layout.addStretch()
-
-
-        # 连接按钮的信号到槽
-        self.discardButton.clicked.connect(self.discardSignal.emit)
-        self.saveButton.clicked.connect(self.saveSignal.emit)
-        self.replaceButton.clicked.connect(self.replaceSignal.emit)
-
-
+    # Create formatters and add it to handlers
+    c_format = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+    c_handler.setFormatter(c_format)
 
 
 if __name__ == '__main__':
+    setup_logger()
     app = QApplication(sys.argv)
     viewer = MainWindow()
     viewer.show()
-    viewer.load_csv()
+    # viewer.load_csv()
     sys.exit(app.exec_())

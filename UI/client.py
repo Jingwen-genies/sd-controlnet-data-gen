@@ -49,9 +49,10 @@ def get_image_dimensions(image_path: str) -> Tuple[int, int]:
 
 
 def create_json_request(
-    paths: Union[str, List[str]] = [],
+    paths: Union[str, List[str]],
     radius: int = 3,
     show_kpt_idx: bool = False,
+    bounding_box: List[List[float]] = None,
 ) -> str:
     """
     Create a JSON structure containing base64 encoded data and sizes of images.
@@ -65,6 +66,10 @@ def create_json_request(
     Returns:
         Dict[str, Dict]: Dictionary containing base64 encoded data and sizes of the images.
     """
+    # Ensure paths is a list even if a single string is provided
+    if isinstance(paths, str):
+        paths = [paths]
+
     result = {
         "visualization_options": {
             "radius": radius,
@@ -72,17 +77,15 @@ def create_json_request(
         },
         "input_images": {},
     }
-    # Ensure paths is a list even if a single string is provided
-    if isinstance(paths, str):
-        paths = [paths]
-    if len(paths) != 0:
-        for path in paths:
-            encoded = encode_image_to_base64(path)
-            width, height = get_image_dimensions(path)
-            result["input_images"][path] = {
-                "image": encoded,
-                "size": {"width": width, "height": height},
-            }
+    for idx, path in enumerate(paths):
+        encoded = encode_image_to_base64(path)
+        width, height = get_image_dimensions(path)
+        result["input_images"][path] = {
+            "image": encoded,
+            "size": {"width": width, "height": height},
+        }
+        if bounding_box is not None:
+            result["input_images"][path]["bounding_box"] = bounding_box[idx]
 
     # Dump data to the specified JSON file
     return json.dumps(result, indent=4)
@@ -100,10 +103,25 @@ def get_landmarks_from_response(response: dict) -> List[np.ndarray]:
     """
     data = json.loads(response["Body"].read().decode("utf-8"))
     data = json.loads(data["result"])
+
     r = data["data"]["result"]
     k = next(iter(r))
-    landmarks = json.loads(r[k])["predictions"]
-    return [np.array(landmark) for landmark in landmarks]
+    keypoints = json.loads(r[k])["predictions"][0][0]['keypoints']
+    # devided by 512 to scale the keypoints to the range of [0, 1]
+    keypoints = np.array(keypoints) / 512
+    # keypoint_scores = json.loads(r[k])["predictions"][0][0]['keypoint_scores']
+    visibility = json.loads(r[k])["predictions"][0][0]['visibility'][0]
+    for i in range(len(keypoints)):
+        print(f"keypoint {i}: {i + 24} {keypoints[i]}, visibility: {visibility[i]}")
+    visibility = [2 if v > 0.3 else 1 for v in visibility]
+    # bbox = json.loads(r[k])["predictions"][0][0]['bbox']
+    # bbox_score = json.loads(r[k])["predictions"][0][0]['bbox_score']
+
+    # put vsiblity into keypoints
+    print("visibilities", visibility)
+    landmarks = [(pt[0], pt[1], visibility[i]) for i, pt in enumerate(keypoints)]
+    print(landmarks)
+    return landmarks
 
 
 if __name__ == "__main__":

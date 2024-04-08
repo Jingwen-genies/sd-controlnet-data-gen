@@ -29,6 +29,8 @@ subject = {
         "unicorn",
     ],
     "Fantasy": [
+        "pumpkin head",
+        "fish head",
         "angel",
         "demon",
         "vampire",
