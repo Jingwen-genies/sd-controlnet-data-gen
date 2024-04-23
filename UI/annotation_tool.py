@@ -79,7 +79,7 @@ class MainWindow(QMainWindow):
         centralWidget = QWidget()
         self.setCentralWidget(centralWidget)
 
-        mainVerticalLayout = QHBoxLayout(centralWidget)
+        main_layout = QHBoxLayout(centralWidget)
 
         self.imageViewer = ImageViewer()
 
@@ -88,12 +88,12 @@ class MainWindow(QMainWindow):
         self.imageViewer.graphicsView.bboxModeChanged.connect(self.updateBboxSwitch)
 
 
-        self.rightControlPanel = RightControlPanel(self)
+        self.leftControlPanel = ControlPanel(self)
 
-        mainVerticalLayout.addWidget(self.imageViewer, 1)
-        mainVerticalLayout.addWidget(self.rightControlPanel)
+        main_layout.addWidget(self.imageViewer, 1)
+        main_layout.addWidget(self.leftControlPanel)
 
-        mainVerticalLayout.addLayout(mainVerticalLayout)
+        main_layout.addLayout(main_layout)
 
         # set default csv as training csv (default labeling training data)
         self.load_training_image_csv()
@@ -108,7 +108,7 @@ class MainWindow(QMainWindow):
     #         self.rightControlPanel.addBboxSwitch.setChecked(self.imageViewer.graphicsView.isBboxMode)
 
     def updateBboxSwitch(self, isBboxMode):
-        self.rightControlPanel.addBboxSwitch.setChecked(isBboxMode)
+        self.leftControlPanel.addBboxSwitch.setChecked(isBboxMode)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Left or event.key() == Qt.Key_A:
@@ -137,7 +137,7 @@ class MainWindow(QMainWindow):
         event.accept()
 
     def updateBboxModeCheckbox(self, isBboxMode):
-        self.rightControlPanel.addBboxSwitch.setChecked(isBboxMode)
+        self.leftControlPanel.addBboxSwitch.setChecked(isBboxMode)
 
     def write_data_to_csv(self):
         # write the data to self.csvData_list to the csv file
@@ -284,8 +284,8 @@ class MainWindow(QMainWindow):
         currentImagePath = Path(self.csvData_list[self.currentIndex].image_path)
 
         image_name = currentImagePath.parent.name + "/" + currentImagePath.name
-        self.rightControlPanel.imagePathLabel.setText(f"Image Path: {image_name}")
-        self.rightControlPanel.currentIndexLabel.setText(f"Index: {self.currentIndex + 1} / {len(self.csvData_list)}")
+        self.leftControlPanel.imagePathLabel.setText(f"{image_name}")
+        self.leftControlPanel.currentIndexLabel.setText(f"Index: {self.currentIndex + 1} / {len(self.csvData_list)}")
 
         # setup the toggle button values
         self.toggleBboxMode(False)
@@ -293,11 +293,11 @@ class MainWindow(QMainWindow):
         self.toggleEyes(True)
         self.toggleMouth(True)
         self.toggleOutline(True)
-        self.rightControlPanel.showEyesButton.setChecked(True)
-        self.rightControlPanel.showNoseButton.setChecked(True)
-        self.rightControlPanel.showMouseButton.setChecked(True)
-        self.rightControlPanel.showOutlineButton.setChecked(True)
-        self.rightControlPanel.addBboxSwitch.setChecked(False)
+        self.leftControlPanel.showEyesButton.setChecked(True)
+        self.leftControlPanel.showNoseButton.setChecked(True)
+        self.leftControlPanel.showMouseButton.setChecked(True)
+        self.leftControlPanel.showOutlineButton.setChecked(True)
+        self.leftControlPanel.addBboxSwitch.setChecked(False)
 
         # assign opposite value to the is_discard value of self.csvData_list[self.currentIndex].is_kept
         # strip the string and compare with "True" to get the boolean value
@@ -307,7 +307,7 @@ class MainWindow(QMainWindow):
         # is_kept = self.csvData_list[self.currentIndex].is_kept.strip().strip('"') == "True"
 
         is_discard = not is_kept
-        self.rightControlPanel.discardButton.setChecked(is_discard)
+        self.leftControlPanel.discardButton.setChecked(is_discard)
 
     def prev_image(self):
         print("Previous image")
@@ -455,7 +455,7 @@ class MainWindow(QMainWindow):
     # Add this method to the MainWindow class
     def jump_to_index(self):
         try:
-            index = int(self.rightControlPanel.indexInput.text()) - 1  # Convert to 0-based index
+            index = int(self.leftControlPanel.indexInput.text()) - 1  # Convert to 0-based index
             if 0 <= index < len(self.csvData_list):
                 print("Jumping to index:", index)
                 self.currentIndex = index
@@ -632,10 +632,12 @@ class ImageViewer(QWidget):
         self.nextButton.move(self.width() - self.nextButton.width() - 10, btnY)
 
 
-class RightControlPanel(QWidget):
+class ControlPanel(QWidget):
     def __init__(self, mainWindow, parent=None):
-        super(RightControlPanel, self).__init__(parent)
-        self.maxWidth = 400
+        super(ControlPanel, self).__init__(parent)
+        self.maxWidth = 600
+
+        self.setFixedWidth(self.maxWidth + 10)
 
         self.mainWindow = mainWindow
 
@@ -643,13 +645,14 @@ class RightControlPanel(QWidget):
         self.setLayout(self.layout)
 
         # information and index jump session
-        self.imagePathLabel = QLabel("Image Path: ")
+        self.imagePathLabel = QLabel("")
         self.currentIndexLabel = QLabel("Index: 0 / 0")
         self.indexInput = QLineEdit()
         self.jumpButton = QPushButton("Jump To Index")
         self.imagePathLabel.setWordWrap(True)
 
         sub_layout1 = QHBoxLayout()
+        sub_layout1.addWidget(self.currentIndexLabel)
         sub_layout1.addWidget(self.indexInput)
         sub_layout1.addWidget(self.jumpButton)
 
@@ -657,6 +660,7 @@ class RightControlPanel(QWidget):
         self.transparencySlider = QSlider(Qt.Horizontal)
         self.transparencySlider.setRange(0, 100)
         self.transparencySlider.setValue(100)
+        self.transparencySlider.setFixedWidth(self.maxWidth - 10)
         self.hideLandmarkIndexButton = QPushButton("Hide Landmark Index")
         self.runFacialLandmarkDetectionButton = QPushButton("Run Facial Landmark Detection")
         self.replaceButton = QPushButton("Replace Landmark")
@@ -695,7 +699,6 @@ class RightControlPanel(QWidget):
         # informations
         info_buttons = [
             self.imagePathLabel,
-            self.currentIndexLabel,
         ]
         # buttons
         landmark_buttons = [
@@ -705,9 +708,9 @@ class RightControlPanel(QWidget):
             self.replaceButton,
             self.addLeftPupilButton,
             self.addRightPupilButton,
-            self.visibleButton,
-            self.invisibleButton,
             self.nonExistButton,
+            self.invisibleButton,
+            self.visibleButton,
             self.selectAllButton,
         ]
         io_buttons = [self.discardButton, self.saveFacialLandmarkImage, self.saveButton]
@@ -718,7 +721,7 @@ class RightControlPanel(QWidget):
         self.setupSection("Bbox", [], sub_layout3)
         self.setupSection("Export", io_buttons)
 
-        self.setFixedWidth(self.maxWidth + 50)
+
 
         self.layout.setSpacing(mainWindow.hButtonSpace)  # 设置控件之间的间距
         self.layout.setContentsMargins(10, 10, 10, 10)  # 设置布局的边距
@@ -758,7 +761,7 @@ class RightControlPanel(QWidget):
         h_divider = QFrame()
         h_divider.setFrameShape(QFrame.HLine)
         h_divider.setFrameShadow(QFrame.Sunken)
-        h_divider.setFixedWidth(self.maxWidth)
+        h_divider.setFixedWidth(self.maxWidth + 10)
         self.layout.addWidget(h_divider)
 
     def setupSection(self, name, widget_list, sub_layout=None):
