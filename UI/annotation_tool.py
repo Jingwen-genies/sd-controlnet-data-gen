@@ -27,6 +27,7 @@ import os
 import rootutils
 import warnings
 import csv
+import numpy as np
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="pytorch_lightning.utilities.distributed",
                         message=".*rank_zero_only has been deprecated.*")
@@ -63,6 +64,8 @@ class MainWindow(QMainWindow):
         self.json_dictionary = None
         self.labeling_control_image = False
         self.csv_path = ""
+        self.landmark_template = None
+
 
         menuBar = self.menuBar()
         fileMenu = menuBar.addMenu('&File')
@@ -98,14 +101,6 @@ class MainWindow(QMainWindow):
         # set default csv as training csv (default labeling training data)
         self.load_training_image_csv()
 
-
-
-    # def mousePressEvent(self, a0):
-    #     if a0.button() == Qt.RightButton:
-    #         print("right button clicked")
-    #         self.imageViewer.graphicsView.isBboxMode = not self.imageViewer.graphicsView.isBboxMode
-    #         print(f"bbox mode: {self.imageViewer.graphicsView.isBboxMode}")
-    #         self.rightControlPanel.addBboxSwitch.setChecked(self.imageViewer.graphicsView.isBboxMode)
 
     def updateBboxSwitch(self, isBboxMode):
         self.leftControlPanel.addBboxSwitch.setChecked(isBboxMode)
@@ -169,7 +164,7 @@ class MainWindow(QMainWindow):
             if currentBbox:
                 # Assuming you have a method or logic to serialize and save the bbox
                 # For demonstration, simply printing the bbox coordinates
-                print(f"Saving BBox: {currentBbox.bbox}")
+                print(f"Saving BBox: {currentBbox.bbox} to self.bbox")
                 # save the bbox with format (x1, y1, x2, y2) as a tuple to self.bbox, where x1, y1 is the topleft point
                 # and x2,y2 is the bottomright point
                 self.bbox = currentBbox
@@ -182,6 +177,7 @@ class MainWindow(QMainWindow):
         print("Running facial landmark detection")
         image_paths = [self.csvData_list[self.currentIndex].image_path]
         if self.bbox:
+            print("Running Facial Landmark Detection using self.bbox")
             x1, y1, x2, y2 = self.bbox.bbox
             bboxes = [[x1, y1, x2, y2]]
             payload = create_json_request(image_paths, bounding_box=bboxes)
@@ -273,13 +269,45 @@ class MainWindow(QMainWindow):
         self.currentIndex = 0
         self.update_curr_img_pose()
 
+    def save_landmark_template(self):
+        print("Saving current Landmark as template")
+        if self.facialLandmarks:
+            self.landmark_template = self.facialLandmarks
+            print(f"Landmark template saved: {self.landmark_template}")
+
+    def load_landmark_template(self):
+        print("Loading landmark template")
+        if self.facialLandmarks:
+            self.facialLandmarks.clear()
+        if self.landmark_template:
+            temp_pts = np.array(self.landmark_template.getLandmarks())
+            # reshape to * x 3
+            temp_pts = temp_pts.reshape(-1, 3)
+
+            self.json_dictioinary = {"people": [{}]}
+            self.facialLandmarks = FacialLandmarks(
+                self.imageViewer.graphicsScene,
+                temp_pts,
+                sceneWidth=512,
+                sceneHeight=512
+            )
+            self.facialLandmarks.draw()
+
     def update_curr_img_pose(self):
         print("Loading image at index:", self.currentIndex)
         print(f"Current image path: {self.csvData_list[self.currentIndex].image_path}")
         if self.currentIndex < 0 or self.currentIndex >= len(self.csvData_list):
             return
         self.imageViewer.load_image(self.csvData_list, self.currentIndex)
-        self.load_json()
+
+        # load the json file and get the landmarks from landmark_path = self.csvData_list[self.currentIndex].landmark
+        if Path(self.csvData_list[self.currentIndex].landmark).exists():
+            self.load_json(landmark_path=self.csvData_list[self.currentIndex].landmark)
+        elif self.landmark_template:
+            print("Loading landmark template")
+            self.load_landmark_template()
+
+
         # get the subfolder and the image name
         currentImagePath = Path(self.csvData_list[self.currentIndex].image_path)
 
@@ -310,24 +338,24 @@ class MainWindow(QMainWindow):
         self.leftControlPanel.discardButton.setChecked(is_discard)
 
     def prev_image(self):
+        if self.facialLandmarks is not None:
+            self.save_landmarks()
         print("Previous image")
-        self.save_landmarks()
         self.currentIndex -= 1
         self.resetScene()
         self.update_curr_img_pose()
 
     def next_image(self):
+        if self.facialLandmarks is not None:
+            self.save_landmarks()
         print("Next image")
-        self.save_landmarks()
         self.currentIndex += 1
         self.resetScene()
         self.update_curr_img_pose()
 
-    def load_json(self):
+    def load_json(self, landmark_path):
         if self.currentIndex < 0 or self.currentIndex >= len(self.csvData_list):
             return
-        landmark_path = self.csvData_list[self.currentIndex].landmark
-        currentImagePath = self.csvData_list[self.currentIndex].image_path
         print("landmark_path is %s", landmark_path)
         self.json_dictionary = read_json(landmark_path)
         landmarks, bbox = read_openpose(landmark_path)
@@ -353,6 +381,7 @@ class MainWindow(QMainWindow):
                 self.bbox.createOrUpdate(x1, y1, x2, y2)
         else:
             logging.warning("No initial landmark found")
+
 
     def updateFacialLandmarks(self, scaleFactor):
         currentImageWidth = self.imageViewer.graphicsView.getCurrentImageWidth()
@@ -679,6 +708,8 @@ class ControlPanel(QWidget):
         self.showNoseButton = self.setupSwitch("Nose", default=True)
         self.showMouseButton = self.setupSwitch("Mouth", default=True)
         self.showOutlineButton = self.setupSwitch("Outline", default=True)
+        self.saveAsTemplate = QPushButton("Save Landmark and bbox as template")
+        self.loadTemplate = QPushButton("Load from template")
 
         sub_layout2 = QHBoxLayout()
         sub_layout2.addWidget(self.showEyesButton)
@@ -687,14 +718,14 @@ class ControlPanel(QWidget):
         sub_layout2.addWidget(self.showOutlineButton)
 
         self.addBboxSwitch = self.setupSwitch("Add BBox")
-        self.saveBboxButton = QPushButton("Save BBox")
+        self.saveBboxButton = QPushButton("Load BBox to self.bbox")
         sub_layout3 = QHBoxLayout()
         sub_layout3.addWidget(self.addBboxSwitch)
         sub_layout3.addWidget(self.saveBboxButton)
 
         self.saveFacialLandmarkImage = QPushButton("Save Facial Landmark Image")
         self.discardButton = self.setupSwitch("Discard Image", default=False)
-        self.saveButton = QPushButton("Save")
+        self.saveButton = QPushButton("Save Bbox and Landmarks in JSON")
 
         # informations
         info_buttons = [
@@ -712,6 +743,8 @@ class ControlPanel(QWidget):
             self.invisibleButton,
             self.visibleButton,
             self.selectAllButton,
+            self.saveAsTemplate,
+            self.loadTemplate
         ]
         io_buttons = [self.discardButton, self.saveFacialLandmarkImage, self.saveButton]
 
@@ -742,6 +775,9 @@ class ControlPanel(QWidget):
         self.visibleButton.clicked.connect(lambda: self.mainWindow.setVisibility(2))
 
         self.selectAllButton.clicked.connect(lambda: self.mainWindow.selectAll())
+        self.saveAsTemplate.clicked.connect(self.mainWindow.save_landmark_template)
+        self.loadTemplate.clicked.connect(self.mainWindow.load_landmark_template)
+
 
         self.showEyesButton.stateChanged.connect(self.mainWindow.toggleEyes)
         self.showNoseButton.stateChanged.connect(self.mainWindow.toggleNose)

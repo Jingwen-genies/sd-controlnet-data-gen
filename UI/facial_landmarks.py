@@ -39,6 +39,15 @@ class FacialLandmarks:
         self.lines = []
         self.isVisiable = True
 
+    def clear(self):
+        """Clear all the landmark related element from the scene"""
+        for kp in self.landmarks:
+            if kp.scene() == self.scene:
+                self.scene.removeItem(kp)
+        for line in self.lines:
+            if line.scene() == self.scene:
+                self.scene.removeItem(line)
+
     def setSceneVisibility(self, visibility, index_group):
         """
         Show, hide landmark groups

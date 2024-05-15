@@ -47,6 +47,7 @@ def generate_csv(input_folder, csv_file, overwrite=False, type: str = "subfolder
 
     if type == "subfolder":
         # Handle images in subfolders
+        print("generating csv for images in subfolders")
         for sub_folder in input_folder.iterdir():
             if sub_folder.is_dir():
                 initial_landmark_path = sub_folder / "pose.json"
@@ -69,11 +70,14 @@ def generate_csv(input_folder, csv_file, overwrite=False, type: str = "subfolder
         writer = csv.writer(file)
         writer.writerow(["image", "new_landmark", "is_kept"])
         for i in range(len(file_list)):
+            print(f"Processing {file_list[i]}")
             # write the row, divide the columns by comma
             sub_folder = file_list[i].parent
             new_landmark_name = sub_folder/(file_list[i].stem + "_landmark.json")
-            if initial_json_list[i] != "":
+            if initial_json_list[i] != "" and initial_json_list[i].exists():
                 shutil.copy(initial_json_list[i], new_landmark_name)
+            print([file_list[i], new_landmark_name.resolve(), True])
+
             writer.writerow([file_list[i], new_landmark_name.resolve(), True])
 
 

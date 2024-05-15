@@ -310,6 +310,8 @@ def generate_images_from_one_control_input(
     shutil.copy(control_net_img_path, output_dir / "input_ori.png")
     for _ in range(num_prompts):
         prompt = generate_unique_prompt(generated_prompts, bald_rate)
+        if "_40" or "_320" in control_net_img_path.stem:
+            prompt += " Generate side view head of the character."
         logger.info("Generated prompt: %s", prompt)
 
         control_net = ControlnetRequest(
@@ -405,13 +407,13 @@ def run_batch_file(port):
 if __name__ == "__main__":
     num_port = 1
     ports = [7860 + i for i in range(num_port)]
-    number_prompts = 10
-    batch_size = 2
-    steps = 50
+    number_prompts = 20
+    batch_size = 4
+    steps = 60
 
     input_dir = Path("./avatar_generation/inputs")
     # input_list = list(input_dir.glob("*_controlInput.png"))
-    #
+
     # bald_rate = 0.9
     # # TODO: check if the server is ready if not wait until it is ready
     # generate_image_wrapper((input_list, ports[0], number_prompts, batch_size, steps, bald_rate))
@@ -444,6 +446,6 @@ if __name__ == "__main__":
         batch_size=batch_size,
         steps=steps,
         bald_rate=bald_rate,
-        control_net_model="lllyasvielsd-controlnet-depth",
+        control_net_model=control_net_model,
         preprocess="depth_midas",
     )

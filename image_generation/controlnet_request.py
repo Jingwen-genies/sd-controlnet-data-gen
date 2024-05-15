@@ -59,31 +59,50 @@ class ControlnetRequest:
             "batch_size": self.batch_size,
             "steps": self.steps,
             "cfg_scale": 7,
+            "sampling_method": "Euler a",
             "override_settings": {
                 "sd_model_checkpoint": self.sd_model_checkpoint,
             },
-            "alwayson_scripts": {
-                "controlnet": {
-                    "args": [
-                        {
-                            "enabled": True,
-                            "module": self.preprocess_module,
-                            "model": self.control_net_checkpoint,
-                            "weight": 1.0,
-                            "image": self.read_image(),
-                            "resize_mode": 1,
-                            "lowvram": False,
-                            "processor_res": 512,
-                            "threshold_a": 64,
-                            "threshold_b": 64,
-                            "guidance_start": 0.0,
-                            "guidance_end": 1.0,
-                            "control_mode": 2,
-                            "pixel_perfect": False,
-                        }
-                    ]
-                }
-            },
+            # "alwayson_scripts": {
+            #     "controlnet": {
+            #         "args": [
+            #             {
+            #                 "enabled": True,
+            #                 "module": self.preprocess_module,
+            #                 "model": self.control_net_checkpoint,
+            #                 "weight": 1.0,
+            #                 "image": self.read_image(),
+            #                 "resize_mode": 1,
+            #                 "lowvram": False,
+            #                 "processor_res": 512,
+            #                 "threshold_a": 64,
+            #                 "threshold_b": 64,
+            #                 "guidance_start": 0.0,
+            #                 "guidance_end": 1.0,
+            #                 "control_mode": 0,
+            #                 "pixel_perfect": False,
+            #             },
+            #             {
+            #                 "enabled": True,
+            #                 "module": "canny",
+            #                 "model": "lllyasvielsd-controlnet-canny",
+            #                 "weight": 1.0,
+            #                 "image": self.read_image(),
+            #                 "resize_mode": 1,
+            #                 "lowvram": False,
+            #                 "processor_res": 512,
+            #                 "threshold_a": 64,
+            #                 "threshold_b": 64,
+            #                 "guidance_start": 0.0,
+            #                 "guidance_end": 1.0,
+            #                 "control_mode": 0,
+            #                 "pixel_perfect": False,
+                              "Control Weight": 0.6,
+            #             }
+            #
+            #         ]
+            #     }
+            # },
         }
 
     def send_request(self):
