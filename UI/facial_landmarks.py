@@ -18,12 +18,6 @@ class FacialLandmarks:
             note that the landmarks here are values in the range of [0, 1],
             we should scale them by canvas size when drawing them
         """
-        self.color = color
-        self.scene = scene
-        self.view = view
-        self.sceneWidth = sceneWidth
-        self.sceneHeight = sceneHeight
-        self.landmarks = [Keypoint(self, u * sceneWidth, v * sceneHeight, visibility, index=index, color=color) for index, (u, v, visibility) in enumerate(landmarks)]
         self.connections = {
             "jaw": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
             "left_eyebrow": [17, 18, 19, 20, 21],
@@ -35,8 +29,17 @@ class FacialLandmarks:
             "upper_lip": [48, 49, 50, 51, 52, 53, 54],
             "lower_lip": [55, 54, 55, 56, 57, 58, 59],
             "upper_inner_lip": [60, 61, 62, 63, 64],
-            "lower_inner_lip": [65, 66, 67]
+            "lower_inner_lip": [65, 66, 67],
+            "left_pupil": [68],
+            "right_pupil": [69]
         }
+        self.color = color
+        self.scene = scene
+        self.view = view
+        self.sceneWidth = sceneWidth
+        self.sceneHeight = sceneHeight
+        self.landmarks = [Keypoint(self, u * sceneWidth, v * sceneHeight, visibility, index=index, color=color) for index, (u, v, visibility) in enumerate(landmarks)]
+
         self.lines = []
         self.isVisiable = True
 
@@ -194,17 +197,18 @@ class FacialLandmarks:
 
     def getGroup(self, index):
         # return the group of the index where the index is in based on self.connections
+        print(f"computing group for index: {index}")
         for key, value in self.connections.items():
             if index in value:
-                return key, value
+                return key, set(value)
 
-    def moveGroup(self, index, offset):
-        # move the group of the index together with index
-        print(f"landmark: shift pressed: {self.view.shiftPressed}")
-        if self.view.shiftPressed:
-            group, indices = self.getGroup(index)
-            for idx in indices:
-                if idx != index:
-                    self.landmarks[idx].x += offset[0]
-                    self.landmarks[idx].y += offset[1]
-            self.draw()
+    # def moveGroup(self, index, offset):
+    #     # move the group of the index together with index
+    #     print(f"landmark: shift pressed: {self.view.shiftPressed}")
+    #     if self.view.shiftPressed:
+    #         group, indices = self.getGroup(index)
+    #         for idx in indices:
+    #             if idx != index:
+    #                 self.landmarks[idx].x += offset[0]
+    #                 self.landmarks[idx].y += offset[1]
+    #         self.draw()
