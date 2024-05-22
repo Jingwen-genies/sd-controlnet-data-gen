@@ -5,7 +5,7 @@ from PyQt5.QtGui import  QFont
 
 
 class Keypoint(QGraphicsEllipseItem):
-    def __init__(self, poseObj,  x, y, visibility, radius=2, parent=None, index=0, color=Qt.yellow):
+    def __init__(self, poseObj,  x, y, visibility, radius=3, parent=None, index=0, color=Qt.yellow):
         super().__init__(x - radius, y - radius, 2 * radius, 2 * radius, parent)
         self.poseObj = poseObj
         self.x = x
@@ -35,6 +35,8 @@ class Keypoint(QGraphicsEllipseItem):
         self.indexTextItem.setDefaultTextColor(QColor(Qt.black))
         font = QFont()
         font.setPointSize(max(1, radius - 1))
+        self.indexTextItem.setZValue(1000)  # Set a high z-value to draw on top
+
         self.indexTextItem.setFont(font)
         self.updateTextPosition()
         self.group, self.group_indices = self.poseObj.getGroup(self.index)
@@ -115,6 +117,7 @@ class Keypoint(QGraphicsEllipseItem):
                         print("previous x:", self.poseObj.landmarks[idx].x, "previous y:", self.poseObj.landmarks[idx].y)
                         self.poseObj.landmarks[idx].x += delta_x
                         self.poseObj.landmarks[idx].y += delta_y
+
                         print("new x:", self.poseObj.landmarks[idx].x, "new y:", self.poseObj.landmarks[idx].y)
                         # self.poseObj.landmarks[idx].updatePosition()
                         print(f"updated keypoint {idx} to x: {self.poseObj.landmarks[idx].x}, y: {self.poseObj.landmarks[idx].y}")

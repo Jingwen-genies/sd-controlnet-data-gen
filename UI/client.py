@@ -116,12 +116,13 @@ def get_landmarks_from_response(response: dict) -> List[np.ndarray]:
     visibility = [2 if v > 0.3 else 1 for v in visibility]
     # bbox = json.loads(r[k])["predictions"][0][0]['bbox']
     # bbox_score = json.loads(r[k])["predictions"][0][0]['bbox_score']
-
     # put vsiblity into keypoints
     print("visibilities", visibility)
     landmarks = [(pt[0], pt[1], visibility[i]) for i, pt in enumerate(keypoints)]
     print(landmarks)
-    return landmarks
+    bbox = json.loads(r[k])["predictions"][0][0]['bbox']
+    print("result bbox", bbox)
+    return landmarks, bbox
 
 
 if __name__ == "__main__":
