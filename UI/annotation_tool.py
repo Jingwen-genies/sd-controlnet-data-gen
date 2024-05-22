@@ -36,6 +36,7 @@ project_root = rootutils.setup_root(search_from=__file__, indicator=".project-ro
 os.chdir(project_root)
 from avatar_generation.support.utils import read_openpose, read_json, write_json, generate_csv
 from avatar_generation.UI.facial_landmarks import FacialLandmarks
+from avatar_generation.UI. keypoint import Keypoint
 from avatar_generation.UI.bbox import Bbox
 # from avatar_generation.UI.keypoint import Keypoint
 from avatar_generation.UI.client import create_json_request, get_landmarks_from_response
@@ -65,6 +66,7 @@ class MainWindow(QMainWindow):
         self.labeling_control_image = False
         self.csv_path = ""
         self.landmark_template = None
+
 
 
         menuBar = self.menuBar()
@@ -101,7 +103,6 @@ class MainWindow(QMainWindow):
         # set default csv as training csv (default labeling training data)
         self.load_training_image_csv()
 
-
     def updateBboxSwitch(self, isBboxMode):
         self.leftControlPanel.addBboxSwitch.setChecked(isBboxMode)
 
@@ -111,7 +112,8 @@ class MainWindow(QMainWindow):
         elif event.key() == Qt.Key_Right or event.key() == Qt.Key_D:
             self.next_image()
         elif event.key() == Qt.Key_E:
-            self.hide_landmarks()
+            if self.facialLandmarks:
+                self.hide_landmarks()
             self.run_facial_landmark_detection()
             self.replace_landmark()
             self.add_left_pupil()
@@ -121,7 +123,7 @@ class MainWindow(QMainWindow):
             self.jump_to_index()
         # save the landmarks using control + s
         elif event.key() == Qt.Key_S and event.modifiers() == Qt.ControlModifier:
-            self.save_landmarks()
+            self.save_everything()
         elif event.key() == Qt.Key_V:
             self.setVisibility(2)
         else:
@@ -136,6 +138,7 @@ class MainWindow(QMainWindow):
 
     def write_data_to_csv(self):
         # write the data to self.csvData_list to the csv file
+        print("Writing data to csv file")
         with open(self.csv_path, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["image", "landmark", "is_kept"])
@@ -183,7 +186,7 @@ class MainWindow(QMainWindow):
             payload = create_json_request(image_paths, bounding_box=bboxes)
         else:
             payload = create_json_request(paths=image_paths, radius=3, show_kpt_idx=True)
-        endpoint_name = "facial-landmark-app-v2"
+        endpoint_name = "facial-landmark-app-v4"
         results = self.runtime_sm_client.invoke_endpoint(
             EndpointName=endpoint_name,
             ContentType="application/json",
@@ -192,6 +195,7 @@ class MainWindow(QMainWindow):
         detected_landmarks = get_landmarks_from_response(results)
         self.detectedLandmarks = FacialLandmarks(
             scene=self.imageViewer.graphicsScene,
+            view = self.imageViewer.graphicsView,
             landmarks=detected_landmarks,
             sceneWidth=512,
             sceneHeight=512,
@@ -287,6 +291,7 @@ class MainWindow(QMainWindow):
             self.json_dictioinary = {"people": [{}]}
             self.facialLandmarks = FacialLandmarks(
                 self.imageViewer.graphicsScene,
+                self.imageViewer.graphicsView,
                 temp_pts,
                 sceneWidth=512,
                 sceneHeight=512
@@ -306,6 +311,12 @@ class MainWindow(QMainWindow):
         elif self.landmark_template:
             print("Loading landmark template")
             self.load_landmark_template()
+        # else:
+        #     print("No landmark json found, no template found, run facial landmark detection")
+        #     self.run_facial_landmark_detection()
+        #     self.replace_landmark()
+        #     self.add_left_pupil()
+        #     self.add_right_pupil()
 
 
         # get the subfolder and the image name
@@ -339,7 +350,7 @@ class MainWindow(QMainWindow):
 
     def prev_image(self):
         if self.facialLandmarks is not None:
-            self.save_landmarks()
+            self.save_everything()
         print("Previous image")
         self.currentIndex -= 1
         self.resetScene()
@@ -347,7 +358,7 @@ class MainWindow(QMainWindow):
 
     def next_image(self):
         if self.facialLandmarks is not None:
-            self.save_landmarks()
+            self.save_everything()
         print("Next image")
         self.currentIndex += 1
         self.resetScene()
@@ -367,6 +378,7 @@ class MainWindow(QMainWindow):
             # Note that here the landmarks are scaled as uv coordinates (0-1)
             self.facialLandmarks = FacialLandmarks(
                 self.imageViewer.graphicsScene,
+                self.imageViewer.graphicsView,
                 landmarks,
                 sceneWidth=scene_width,
                 sceneHeight=scene_height
@@ -375,12 +387,12 @@ class MainWindow(QMainWindow):
             # for i in range(len(self.facialLandmarks.landmarks)):
             #     print(f"keypoint {i}: {i + 24} {self.facialLandmarks.landmarks[i].visibility}")
             self.facialLandmarks.draw()
-            if bbox is not None:
-                x1, y1, x2, y2 = bbox
-                self.bbox = Bbox(self.imageViewer.graphicsScene)
-                self.bbox.createOrUpdate(x1, y1, x2, y2)
         else:
             logging.warning("No initial landmark found")
+        if bbox is not None:
+            x1, y1, x2, y2 = bbox
+            self.bbox = Bbox(self.imageViewer.graphicsScene)
+            self.bbox.createOrUpdate(x1, y1, x2, y2)
 
 
     def updateFacialLandmarks(self, scaleFactor):
@@ -388,7 +400,36 @@ class MainWindow(QMainWindow):
         currentImageHeight = self.imageViewer.getCurrentImageHeight()
         self.facialLandmarks.updateKeypoints(scaleFactor, currentImageWidth, currentImageHeight)
 
-    def save_landmarks(self):
+    def save_everything(self):
+        if not self.json_dictionary:
+            self.json_dictionary = {"people": [{}]}
+
+        if self.facialLandmarks:
+            self.save_landmarks_to_file()
+        self.save_bbox_to_file()
+
+        self.json_dictionary['canvas_width'] = 512
+        self.json_dictionary['canvas_height'] = 512
+        self.json_dictionary['canvas_height'] = 512
+        # print(self.json_dictionary)
+        json_path = self.csvData_list[self.currentIndex].landmark
+        print("json path: %s", json_path)
+        # Check if the JSON file path is a valid string
+        try:
+            write_json(self.json_dictionary, json_path)
+            print("Landmarks saved to JSON file successfully.")
+        except Exception as e:
+            logging.error("Error:", e)
+
+    def save_bbox_to_file(self):
+        print("Saving bbox")
+        self.saveBbox()
+        if self.bbox:
+            bbox = self.bbox.bbox
+            self.json_dictionary["people"][0]['bbox'] = bbox
+
+
+    def save_landmarks_to_file(self):
         print("Saving landmarks")
         if self.labeling_control_image and not self.facialLandmarks:
             self.replace_landmark()
@@ -413,27 +454,10 @@ class MainWindow(QMainWindow):
         for kp in invisible_group:
             kp.setVisibility(1)
 
-        if not self.json_dictionary:
-            self.json_dictionary = {"people": [{}]}
 
-        self.saveBbox()
-        if self.bbox:
-            bbox = self.bbox.bbox
-            self.json_dictionary["people"][0]['bbox'] = bbox
 
-        self.json_dictionary['canvas_width'] = 512
-        self.json_dictionary['canvas_height'] = 512
-        self.json_dictionary['canvas_height'] = 512
         self.json_dictionary["people"][0]['face_keypoints_2d'] = landmarks
-        # print(self.json_dictionary)
-        json_path = self.csvData_list[self.currentIndex].landmark
-        print("json path: %s", json_path)
-        # Check if the JSON file path is a valid string
-        try:
-            write_json(self.json_dictionary, json_path)
-            print("Landmarks saved to JSON file successfully.")
-        except Exception as e:
-            logging.error("Error:", e)
+
 
     def setVisibility(self, state):
         if self.facialLandmarks:
@@ -518,6 +542,23 @@ class CustomGraphicsView(QGraphicsView):
         self._panning = False
         self._panStartX = 0
         self._panStartY = 0
+        self.shiftPressed = False
+
+    def keyPressEvent(self, event):
+
+        if event.key() == Qt.Key_Shift:
+            self.shiftPressed = True
+            print(f"Shift pressed: {self.shiftPressed}")
+
+        else:
+            super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key_Shift:
+            self.shiftPressed = False
+            print(f"Shift released: {self.shiftPressed}")
+        else:
+            super().keyReleaseEvent(event)
 
     def mousePressEvent(self, event):
         print("\nreceived mouse press event")
@@ -560,6 +601,14 @@ class CustomGraphicsView(QGraphicsView):
         else:
             super().mouseReleaseEvent(event)
 
+    def start_group_drag(self, index):
+        self.groupToMove = []
+        group = self.parent().landmarks.get_group(index)  # Make sure to replace with your actual landmarks object
+        for idx in group:
+            for item in self.scene().items():
+                if isinstance(item, Keypoint) and item.index == idx:
+                    self.groupToMove.append(item)
+
     def resizeEvent(self, event):
         if self.shouldFitInView and self.scene():
             self.fitInView(self.sceneRect(), Qt.KeepAspectRatio)
@@ -597,6 +646,7 @@ class CustomGraphicsView(QGraphicsView):
 
     def getViewHeight(self):
         return self.viewport().height()
+
 
 
 class ImageViewer(QWidget):
@@ -789,7 +839,7 @@ class ControlPanel(QWidget):
 
         self.saveFacialLandmarkImage.clicked.connect(self.mainWindow.save_landmark_images)
         self.discardButton.stateChanged.connect(self.mainWindow.discard_image)
-        self.saveButton.clicked.connect(self.mainWindow.save_landmarks)
+        self.saveButton.clicked.connect(self.mainWindow.save_everything)
 
     def setupDivider(self, name):
         label = QLabel(name)

@@ -10,7 +10,7 @@ from keypoint import Keypoint
 
 
 class FacialLandmarks:
-    def __init__(self, scene, landmarks: List[List[int]], sceneWidth=512, sceneHeight=512, color=Qt.yellow):
+    def __init__(self, scene, view, landmarks: List[List[int]], sceneWidth=512, sceneHeight=512, color=Qt.yellow):
         """
         Args:
             scene: QtGraphicsScene
@@ -20,6 +20,7 @@ class FacialLandmarks:
         """
         self.color = color
         self.scene = scene
+        self.view = view
         self.sceneWidth = sceneWidth
         self.sceneHeight = sceneHeight
         self.landmarks = [Keypoint(self, u * sceneWidth, v * sceneHeight, visibility, index=index, color=color) for index, (u, v, visibility) in enumerate(landmarks)]
@@ -110,9 +111,11 @@ class FacialLandmarks:
             for i in range(len(indices) - 1):
                 start_idx, end_idx = indices[i], indices[i + 1]
                 start, end = self.landmarks[start_idx], self.landmarks[end_idx]
-                line = QGraphicsLineItem(start.x + start.radius, start.y + start.radius, end.x + end.radius,
-                                         end.y + end.radius)
+                # line = QGraphicsLineItem(start.x + start.radius, start.y + start.radius, end.x + end.radius,
+                #                          end.y + end.radius)
+                line = QGraphicsLineItem(start.x, start.y, end.x, end.y)
                 line.setPen(pen)
+                line.setOpacity(0.5)
                 self.scene.addItem(line)
                 self.lines.append(line)
                 if not start.show_in_canvas or not end.show_in_canvas:
@@ -189,6 +192,19 @@ class FacialLandmarks:
             kp.is_selected = True
             # kp.setBrush(QBrush(QColor(Qt.red)))
 
+    def getGroup(self, index):
+        # return the group of the index where the index is in based on self.connections
+        for key, value in self.connections.items():
+            if index in value:
+                return key, value
 
-
-
+    def moveGroup(self, index, offset):
+        # move the group of the index together with index
+        print(f"landmark: shift pressed: {self.view.shiftPressed}")
+        if self.view.shiftPressed:
+            group, indices = self.getGroup(index)
+            for idx in indices:
+                if idx != index:
+                    self.landmarks[idx].x += offset[0]
+                    self.landmarks[idx].y += offset[1]
+            self.draw()

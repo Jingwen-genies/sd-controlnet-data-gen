@@ -93,22 +93,23 @@ def read_openpose(json_path):
     data = read_json(json_path)
     print(f"Reading openpose json file: {json_path}")
     if data:
-        landmark = data["people"][0]['face_keypoints_2d']  # list
-        landmark = np.array(landmark).reshape(-1, 3)
-        keypoints = landmark[:, :2]
-        # for i in range(len(keypoints)):
-        #     print(f"keypoint {i}: {i + 24} {landmark[i]}")
-        # make sure the landmark is in the range of [0, 1], if not read the image and get the landmark
-        if np.max(keypoints) > 1:
-            print("The landmark is not in the range of [0, 1], please provide the image path to get the correct landmark")
-            print(landmark)
-            if "canvas_width" in data:
-                image_width = data["canvas_width"]
-                image_height = data["canvas_height"]
-            else:
-                image_width, image_height = 512, 512
-            landmark[:, 0] /= image_width
-            landmark[:, 1] /= image_height
+        landmark = data["people"][0].get('face_keypoints_2d')
+        if landmark:# list
+            landmark = np.array(landmark).reshape(-1, 3)
+            keypoints = landmark[:, :2]
+            # for i in range(len(keypoints)):
+            #     print(f"keypoint {i}: {i + 24} {landmark[i]}")
+            # make sure the landmark is in the range of [0, 1], if not read the image and get the landmark
+            if np.max(keypoints) > 1:
+                print("The landmark is not in the range of [0, 1], please provide the image path to get the correct landmark")
+                print(landmark)
+                if "canvas_width" in data:
+                    image_width = data["canvas_width"]
+                    image_height = data["canvas_height"]
+                else:
+                    image_width, image_height = 512, 512
+                landmark[:, 0] /= image_width
+                landmark[:, 1] /= image_height
         bbox = data["people"][0].get("bbox")
         return landmark, bbox
     return None, None

@@ -74,8 +74,8 @@ class Keypoint(QGraphicsEllipseItem):
         self.setBrush(QBrush(self.color))
 
     def updatePosition(self):
-        # self.setPos(self.x - self.radius, self.y - self.radius)
-        self.setPos(self.x, self.y)
+        self.setPos(self.x - self.radius, self.y - self.radius)
+        # self.setPos(self.x, self.y)
 
     def itemChange(self, change, value):
         if change == QGraphicsEllipseItem.ItemPositionHasChanged:
@@ -85,6 +85,7 @@ class Keypoint(QGraphicsEllipseItem):
             self.x = self.initial_x + newPos.x()
             self.y = self.initial_y + newPos.y()
             self.poseObj.draw_connection()  # 通知FacialLandmarks更新连线
+            self.poseObj.moveGroup(self.index, [newPos.x(), newPos.y()])
         return super().itemChange(change, value)
 
     def updateScale(self, scaleFactor):
