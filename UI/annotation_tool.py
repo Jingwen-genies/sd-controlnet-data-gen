@@ -351,7 +351,6 @@ class MainWindow(QMainWindow):
         #     self.add_left_pupil()
         #     self.add_right_pupil()
 
-
         # get the subfolder and the image name
         currentImagePath = Path(self.csvData_list[self.currentIndex].image_path)
 
@@ -360,7 +359,6 @@ class MainWindow(QMainWindow):
         self.leftControlPanel.currentIndexLabel.setText(f"Index: {self.currentIndex + 1} / {len(self.csvData_list)}")
 
         # setup the toggle button values
-        self.toggleBboxMode(False)
         self.toggleNose(True)
         self.toggleEyes(True)
         self.toggleMouth(True)
@@ -441,7 +439,6 @@ class MainWindow(QMainWindow):
         self.save_bbox_to_file()
 
         self.json_dictionary['canvas_width'] = 512
-        self.json_dictionary['canvas_height'] = 512
         self.json_dictionary['canvas_height'] = 512
         # print(self.json_dictionary)
         json_path = self.csvData_list[self.currentIndex].landmark
