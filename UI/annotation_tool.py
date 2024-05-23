@@ -5,18 +5,13 @@ import logging
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
-    QGraphicsView,
-    QGraphicsScene,
-    QPushButton,
     QHBoxLayout,
     QWidget,
-    QGraphicsPixmapItem,
     QAction,
     QMessageBox
 )
 
-from PyQt5.QtGui import QPixmap, QPainter
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt
 import dataclasses
 from typing import List
 import os
@@ -46,21 +41,20 @@ class csvRow:
     is_kept: bool
 
 
-def detect_all(csv_data_list, start_index):
+def detect_all(endpoint_name, csv_data_list, start_index, number_of_images=10):
     runtime_sm_client = boto3.client(service_name="sagemaker-runtime")
-    for i in range(start_index, start_index + 300):
+    for i in range(start_index, start_index + number_of_images):
         input_path = csv_data_list[i].image_path
         json_path = csv_data_list[i].landmark
         # run facial landmark detection for input_path
+        bboxes = None
         if Path(json_path).exists():
             # read bbox from the json file
             detected_landmarks, bbox = read_openpose(json_path)
             if bbox is not None:
                 bboxes = [bbox]
-            else:
-                bboxes = None
-        result = call_end_point(runtime_sm_client, [input_path], bboxes)
-        detected_landmarks, bbox = get_landmarks_from_response(result)
+        result = call_end_point(endpoint_name, runtime_sm_client, [input_path], bboxes)
+        detected_landmarks, bbox = get_landmarks_from_response(result, compute_pupil=True)
         # save the detected landmarks to the json file
         detected_landmarks = np.array(detected_landmarks).reshape(-1, 3).tolist()
         json_dict = {"people": [{}]}
@@ -71,10 +65,10 @@ def detect_all(csv_data_list, start_index):
         write_json(json_dict, json_path)
 
 
-def call_end_point(runtime_sm_client, image_paths, bboxes):
+def call_end_point(endpoint_name, runtime_sm_client, image_paths, bboxes):
     # call the endpoint with image_path and bbox
     payload = create_json_request(paths=image_paths, bounding_box=bboxes, radius=3, show_kpt_idx=True)
-    endpoint_name = "facial-landmark-app-v4"
+    print(f"Calling endpoint: {endpoint_name}")
     results = runtime_sm_client.invoke_endpoint(
         EndpointName=endpoint_name,
         ContentType="application/json",
@@ -101,8 +95,7 @@ class MainWindow(QMainWindow):
         self.labeling_control_image = False
         self.csv_path = ""
         self.landmark_template = None
-
-
+        self.endpoint = "facial-landmark-app-v5" # default v5, can be changed in a dropdown
 
         menuBar = self.menuBar()
         fileMenu = menuBar.addMenu('&File')
@@ -121,23 +114,27 @@ class MainWindow(QMainWindow):
 
         main_layout = QHBoxLayout(centralWidget)
 
-        self.imageViewer = ImageViewer()
+        self.imageViewer = ImageViewer(self)
 
         self.imageViewer.requestPreviousImage.connect(self.prev_image)
         self.imageViewer.requestNextImage.connect(self.next_image)
         self.imageViewer.graphicsView.bboxModeChanged.connect(self.updateBboxSwitch)
 
-
         self.leftControlPanel = ControlPanel(self)
+        self.leftControlPanel.selectionChanged.connect(self.update_endpoint)
 
         main_layout.addWidget(self.leftControlPanel)
         main_layout.addWidget(self.imageViewer, 1)
-
 
         main_layout.addLayout(main_layout)
 
         # set default csv as training csv (default labeling training data)
         self.load_training_image_csv()
+
+    def update_endpoint(self, selected_item):
+        # Update self.endpoint with the selected item
+        self.endpoint = selected_item
+        print(f"Selected endpoint: {self.endpoint}")
 
     def updateBboxSwitch(self, isBboxMode):
         self.leftControlPanel.addBboxSwitch.setChecked(isBboxMode)
@@ -160,6 +157,7 @@ class MainWindow(QMainWindow):
         # save the landmarks using control + s
         elif event.key() == Qt.Key_S and event.modifiers() == Qt.ControlModifier:
             self.save_everything()
+            self.write_data_to_csv()
         elif event.key() == Qt.Key_V:
             self.setVisibility(2)
         else:
@@ -223,7 +221,7 @@ class MainWindow(QMainWindow):
         else:
             bboxes = None
 
-        results = call_end_point(self.runtime_sm_client, image_paths, bboxes)
+        results = call_end_point(self.endpoint, self.runtime_sm_client, image_paths, bboxes)
         detected_landmarks, _ = get_landmarks_from_response(results)
         self.detectedLandmarks = FacialLandmarks(
             scene=self.imageViewer.graphicsScene,
@@ -339,7 +337,10 @@ class MainWindow(QMainWindow):
 
         # load the json file and get the landmarks from landmark_path = self.csvData_list[self.currentIndex].landmark
         if Path(self.csvData_list[self.currentIndex].landmark).exists():
-            self.load_json(landmark_path=self.csvData_list[self.currentIndex].landmark)
+            try:
+                self.load_json(landmark_path=self.csvData_list[self.currentIndex].landmark)
+            except Exception as e:
+                logging.error("Error loading json file:", e)
         elif self.landmark_template:
             print("Loading landmark template")
             self.load_landmark_template()
@@ -425,7 +426,6 @@ class MainWindow(QMainWindow):
             x1, y1, x2, y2 = bbox
             self.bbox = Bbox(self.imageViewer.graphicsScene)
             self.bbox.createOrUpdate(x1, y1, x2, y2)
-
 
     def updateFacialLandmarks(self, scaleFactor):
         currentImageWidth = self.imageViewer.graphicsView.getCurrentImageWidth()
@@ -554,18 +554,19 @@ class MainWindow(QMainWindow):
             self.facialLandmarks.draw()
 
 
-    def run_detection_for_all(self):
+    def run_detection_for_all(self, number_of_images=10):
         self.leftControlPanel.runDetectionForAllButton.setEnabled(False)
         # Create a separate process to run detect_all
+        number_of_images = int(self.leftControlPanel.numberOfImagesInput.text())
         process = multiprocessing.Process(
             target=detect_all,
-            args=(self.csvData_list, self.currentIndex)
+            args=(self.endpoint, self.csvData_list, self.currentIndex, number_of_images)
         )
         process.start()
 
         # Optionally, you can keep track of the process if needed
         self.detection_process = process
-
+        self.leftControlPanel.runDetectionForAllButton.setEnabled(True)
 
 def setup_logger():
     # Create a custom logger

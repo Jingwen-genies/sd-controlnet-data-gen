@@ -91,7 +91,7 @@ def create_json_request(
     return json.dumps(result, indent=4)
 
 
-def get_landmarks_from_response(response: dict) -> List[np.ndarray]:
+def get_landmarks_from_response(response: dict, compute_pupil : bool=False) -> List[np.ndarray]:
     """
     Get the landmarks from the response of the SageMaker endpoint.
 
@@ -102,8 +102,9 @@ def get_landmarks_from_response(response: dict) -> List[np.ndarray]:
         List[np.ndarray]: A list of landmarks.
     """
     data = json.loads(response["Body"].read().decode("utf-8"))
-    data = json.loads(data["result"])
+    print(data)
 
+    data = json.loads(data["result"])
     r = data["data"]["result"]
     k = next(iter(r))
     keypoints = json.loads(r[k])["predictions"][0][0]['keypoints']
@@ -122,6 +123,16 @@ def get_landmarks_from_response(response: dict) -> List[np.ndarray]:
     print(landmarks)
     bbox = json.loads(r[k])["predictions"][0][0]['bbox']
     print("result bbox", bbox)
+    if compute_pupil and len(landmarks) == 68:
+        # calculating the pupils
+        left_eye = landmarks[42: 48]
+        left_eye = [[kp[0], kp[1]] for kp in left_eye]
+        left_eye_center = [sum([x[0] for x in left_eye]) / 6, sum([x[1] for x in left_eye]) / 6]
+        landmarks.append([left_eye_center[0], left_eye_center[1], 2])
+        right_eye = landmarks[36: 42]
+        right_eye = [[kp[0], kp[1]] for kp in right_eye]
+        right_eye_center = [sum([x[0] for x in right_eye]) / 6, sum([x[1] for x in right_eye]) / 6]
+        landmarks.append([right_eye_center[0], right_eye_center[1], 2])
     return landmarks, bbox
 
 

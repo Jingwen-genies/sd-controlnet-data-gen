@@ -1,9 +1,9 @@
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QRectF, QPointF
 from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QPainter
+from PyQt5.QtGui import QPainter, QPen, QColor
 from PyQt5.QtWidgets import QGraphicsView
 
-from avatar_generation.UI.keypoint import Keypoint
+from avatar_generation.UI.bbox import Bbox
 
 
 class CustomGraphicsView(QGraphicsView):
@@ -12,6 +12,7 @@ class CustomGraphicsView(QGraphicsView):
 
     def __init__(self, parent=None):
         super(CustomGraphicsView, self).__init__(parent)
+        self.parent = parent
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         self.scaleFactor = 1.0
         self.shouldFitInView = True
@@ -20,6 +21,11 @@ class CustomGraphicsView(QGraphicsView):
         self.startPoint = None
         self.currentBbox = None
 
+        self.isSelectionMode = False
+        self.selectedRect = None
+        self.isLeftMousePressed = False
+
+
         # For panning
         self._panning = False
         self._panStartX = 0
@@ -27,21 +33,31 @@ class CustomGraphicsView(QGraphicsView):
         self.shiftPressed = False
 
     def keyPressEvent(self, event):
-
+        if event.isAutoRepeat():
+            return
         if event.key() == Qt.Key_Shift:
             self.shiftPressed = True
             print(f"Shift pressed: {self.shiftPressed}")
+        elif event.key() == Qt.Key_Z:
+            self.isSelectionMode = True
+            print(f"z pressed: {self.isSelectionMode}")
 
         else:
             super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
+        if event.isAutoRepeat():
+            return
         if event.key() == Qt.Key_Shift:
             self.shiftPressed = False
             print(f"Shift released: {self.shiftPressed}")
+        elif event.key() == Qt.Key_Z:
+            self.isSelectionMode = False
+            print(f"z released: {self.isSelectionMode}")
+            self.selectedRect = None
+            self.update()
         else:
             super().keyReleaseEvent(event)
-
 
     def mousePressEvent(self, event):
         print("\nreceived mouse press event")
@@ -61,6 +77,9 @@ class CustomGraphicsView(QGraphicsView):
             if self.currentBbox:
                 self.currentBbox = None
             self.currentBbox = Bbox(self.scene())
+        elif event.button() == Qt.LeftButton and self.isSelectionMode:
+            self.isLeftMousePressed = True
+            self.startPoint = self.mapToScene(event.pos())
         else:
             super().mousePressEvent(event)
 
@@ -72,6 +91,17 @@ class CustomGraphicsView(QGraphicsView):
         elif self.isBboxMode and self.startPoint:
             endPoint = self.mapToScene(event.pos())
             self.currentBbox.createOrUpdate(self.startPoint.x(), self.startPoint.y(), endPoint.x(), endPoint.y())
+        elif self.isSelectionMode and self.startPoint and self.isLeftMousePressed:
+            endPoint = self.mapToScene(event.pos())
+            self.selectedRect = QRectF(self.startPoint, endPoint)
+            self.selectPointsInRectangle()  # Select points while dragging
+            print(f"selected rect is: {self.selectedRect}")
+            self.viewport().update()  # Trigger a repaint to show the rectangle
+            # Trigger a repaint to show the rectangle
+
+            for point in self.parent.parent.facialLandmarks.landmarks:
+                if point.is_selected:
+                    print(f"point {point.index} is selected")
         else:
             super().mouseMoveEvent(event)
 
@@ -81,16 +111,31 @@ class CustomGraphicsView(QGraphicsView):
             self.setCursor(Qt.ArrowCursor)
         elif self.isBboxMode:
             self.startPoint = None
+        elif self.isSelectionMode and event.button() == Qt.LeftButton and self.isLeftMousePressed:
+            # Check each keypoint if they are in the bbox and return a list of selected points
+            self.startPoint = None
+            self.isLeftMousePressed = False
+            self.selectedRect = None
+            self.viewport().update()
         else:
             super().mouseReleaseEvent(event)
 
-    def start_group_drag(self, index):
-        self.groupToMove = []
-        group = self.parent().landmarks.get_group(index)  # Make sure to replace with your actual landmarks object
-        for idx in group:
-            for item in self.scene().items():
-                if isinstance(item, Keypoint) and item.index == idx:
-                    self.groupToMove.append(item)
+    def selectPointsInRectangle(self):
+        if self.selectedRect:
+            print("Selecting points in rectangle")
+            for point in self.parent.parent.facialLandmarks.landmarks:
+                if self.selectedRect.contains(QPointF(point.x, point.y)):
+                    point.set_selection_status(True)
+                else:
+                    point.set_selection_status(False)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self.selectedRect:
+            painter = QPainter(self.viewport())
+            painter.setPen(QPen(QColor(0, 0, 255, 127), 2, Qt.DashLine))
+            painter.setBrush(QColor(0, 0, 255, 50))
+            painter.drawRect(self.mapFromScene(self.selectedRect).boundingRect())
 
     def resizeEvent(self, event):
         if self.shouldFitInView and self.scene():

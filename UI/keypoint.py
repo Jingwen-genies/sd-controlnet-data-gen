@@ -1,11 +1,11 @@
 from PyQt5.QtWidgets import QGraphicsEllipseItem, QGraphicsTextItem
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QBrush, QColor
+from PyQt5.QtGui import QBrush, QColor, QPen
 from PyQt5.QtGui import  QFont
 
 
 class Keypoint(QGraphicsEllipseItem):
-    def __init__(self, poseObj,  x, y, visibility, radius=3, parent=None, index=0, color=Qt.yellow):
+    def __init__(self, poseObj,  x, y, visibility, radius=2, parent=None, index=0, color=Qt.yellow):
         super().__init__(x - radius, y - radius, 2 * radius, 2 * radius, parent)
         self.poseObj = poseObj
         self.x = x
@@ -21,10 +21,12 @@ class Keypoint(QGraphicsEllipseItem):
         self.setAcceptHoverEvents(True)
         self.index_offset = 24
         self.show_in_canvas = True
+        self.setZValue(1)  # Ensure keypoints are drawn on top of connections
 
         self.setFlags(QGraphicsEllipseItem.ItemIsMovable | QGraphicsEllipseItem.ItemSendsGeometryChanges)
         self.is_selected = False
         self.setBrush(QBrush(self.getColor()))
+        self.setPen(QPen(Qt.NoPen))  # Remove the boundary by setting the pen to NoPen
         self.initial_group_positions = None
         self.is_being_moved = False
 
@@ -34,12 +36,20 @@ class Keypoint(QGraphicsEllipseItem):
         self.indexTextItem = QGraphicsTextItem(str(self.index + self.index_offset), self)
         self.indexTextItem.setDefaultTextColor(QColor(Qt.black))
         font = QFont()
-        font.setPointSize(max(1, radius - 1))
+        font.setPointSize(2)
         self.indexTextItem.setZValue(1000)  # Set a high z-value to draw on top
 
         self.indexTextItem.setFont(font)
         self.updateTextPosition()
         self.group, self.group_indices = self.poseObj.getGroup(self.index)
+
+    def set_selection_status(self, status):
+        self.is_selected = status
+        if self.is_selected:
+            self.setBrush(QBrush(QColor(Qt.red)))
+        else:
+            self.setBrush(QBrush(self.color))
+
 
     def setVisibility(self, visibility):
         self.visibility = visibility
@@ -107,6 +117,8 @@ class Keypoint(QGraphicsEllipseItem):
             if self.poseObj.view.shiftPressed and self.is_being_moved:
                 print(" ")
                 print("Dealing with group keypoints")
+                print(f"index: {self.index} group: {self.group} group_indices: {self.group_indices}")
+
                 delta_x = self.x - prev_x
                 delta_y = self.y - prev_y
                 print(f"delta_x: {delta_x}, delta_y: {delta_y}")
@@ -117,7 +129,10 @@ class Keypoint(QGraphicsEllipseItem):
                         print("previous x:", self.poseObj.landmarks[idx].x, "previous y:", self.poseObj.landmarks[idx].y)
                         self.poseObj.landmarks[idx].x += delta_x
                         self.poseObj.landmarks[idx].y += delta_y
-
+                        # self.poseObh.landmarks[idx].setPos(
+                        #     self.possObj.landmarks[idx].x - self.poseObj.landmarks[idx].radius - self.poseObj.landmarks[idx].initial_x,
+                        #     self.poseObj.landmarks[idx].y - self.poseObj.landmarks[idx].radius - self.poseObj.landmarks[idx].initial_y,
+                        # )
                         print("new x:", self.poseObj.landmarks[idx].x, "new y:", self.poseObj.landmarks[idx].y)
                         # self.poseObj.landmarks[idx].updatePosition()
                         print(f"updated keypoint {idx} to x: {self.poseObj.landmarks[idx].x}, y: {self.poseObj.landmarks[idx].y}")

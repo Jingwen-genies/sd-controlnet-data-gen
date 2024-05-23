@@ -1,10 +1,10 @@
 from PyQt5.QtWidgets import QLabel, QFrame, QCheckBox, QPushButton, QHBoxLayout, QSlider, QLineEdit, QVBoxLayout, \
-    QWidget
-from PyQt5.QtCore import Qt
-
+    QWidget, QComboBox
+from PyQt5.QtCore import Qt, pyqtSignal
 
 
 class ControlPanel(QWidget):
+    selectionChanged = pyqtSignal(str)  # Define a custom signal
     def __init__(self, mainWindow, parent=None):
         super(ControlPanel, self).__init__(parent)
         self.maxWidth = 600
@@ -69,7 +69,26 @@ class ControlPanel(QWidget):
         self.discardButton = self.setupSwitch("Discard Image", default=False)
         self.saveButton = QPushButton("Save Bbox and Landmarks in JSON")
 
-        self.runDetectionForAllButton = QPushButton("Run Detection for All")
+        self.runDetectionForAllButton = QPushButton("Run Detection for Batch")
+        self.numberOfImagesInput = QLineEdit()
+        sub_layout4 = QHBoxLayout()
+        sub_layout4.addWidget(self.runDetectionForAllButton)
+        sub_layout4.addWidget(self.numberOfImagesInput)
+
+        # model selection
+        # Create a label to display the selected option
+        sub_layout5 = QVBoxLayout()
+        self.label = QLabel("Select a endpoint from the dropdown", self)
+        sub_layout5.addWidget(self.label)
+
+        # Create a QComboBox (dropdown menu)
+        self.combo_box = QComboBox(self)
+        self.combo_box.addItem("facial-landmark-app-v2")
+        self.combo_box.addItem("facial-landmark-app-v4")
+        self.combo_box.addItem("facial-landmark-app-v5")
+
+        # Connect the selection change event to a handler
+        sub_layout5.addWidget(self.combo_box)
 
         # informations
         info_buttons = [
@@ -90,14 +109,14 @@ class ControlPanel(QWidget):
             self.saveAsTemplate,
             self.loadTemplate
         ]
-        io_buttons = [self.discardButton, self.saveFacialLandmarkImage, self.saveButton, self.runDetectionForAllButton]
+        io_buttons = [self.discardButton, self.saveFacialLandmarkImage, self.saveButton]
 
         ##################### Layout ############################
         self.setupSection("Information", info_buttons, sub_layout1)
         self.setupSection("Facial Landmarks", landmark_buttons, sub_layout2)
         self.setupSection("Bbox", [], sub_layout3)
-        self.setupSection("Export", io_buttons)
-
+        self.setupSection("io", io_buttons, sub_layout4)
+        self.setupSection("Model Selection", [], sub_layout5)
 
 
         self.layout.setSpacing(mainWindow.hButtonSpace)  # 设置控件之间的间距
@@ -135,6 +154,14 @@ class ControlPanel(QWidget):
         self.discardButton.stateChanged.connect(self.mainWindow.discard_image)
         self.saveButton.clicked.connect(self.mainWindow.save_everything)
         self.runDetectionForAllButton.clicked.connect(self.mainWindow.run_detection_for_all)
+
+        self.combo_box.currentIndexChanged.connect(self.on_combobox_changed)
+
+    def on_combobox_changed(self, index):
+        # Emit the custom signal with the selected item
+        selected_item = self.combo_box.currentText()
+        self.selectionChanged.emit(selected_item)
+
 
     def setupDivider(self, name):
         label = QLabel(name)

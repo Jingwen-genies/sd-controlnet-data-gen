@@ -20,12 +20,12 @@ class FacialLandmarks:
         """
         self.connections = {
             "jaw": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-            "left_eyebrow": [17, 18, 19, 20, 21],
-            "right_eyebrow": [22, 23, 24, 25, 26],
+            "right_eyebrow": [17, 18, 19, 20, 21],
+            "left_eyebrow": [22, 23, 24, 25, 26],
             "nose_bridge": [27, 28, 29, 30],
             "nose_tip": [31, 32, 33, 34, 35],
-            "left_eye": [36, 37, 38, 39, 40, 41, 36],
-            "right_eye": [42, 43, 44, 45, 46, 47, 42],
+            "right_eye": [36, 37, 38, 39, 40, 41, 36],
+            "left_eye": [42, 43, 44, 45, 46, 47, 42],
             "upper_lip": [48, 49, 50, 51, 52, 53, 54],
             "lower_lip": [55, 54, 55, 56, 57, 58, 59],
             "upper_inner_lip": [60, 61, 62, 63, 64],
@@ -197,10 +197,14 @@ class FacialLandmarks:
 
     def getGroup(self, index):
         # return the group of the index where the index is in based on self.connections
-        print(f"computing group for index: {index}")
         for key, value in self.connections.items():
             if index in value:
-                return key, set(value)
+                if key == "left_eye":
+                    return key, set(value + [68])
+                elif key == "right_eye":
+                    return key, set(value + [69])
+                else:
+                    return key, set(value)
 
     # def moveGroup(self, index, offset):
     #     # move the group of the index together with index

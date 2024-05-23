@@ -15,6 +15,7 @@ class ImageViewer(QWidget):
 
     def __init__(self, parent=None):
         super(ImageViewer, self).__init__(parent)
+        self.parent = parent
 
         # 使用CustomGraphicsView作为图片显示区域
         self.graphicsView = CustomGraphicsView(self)
