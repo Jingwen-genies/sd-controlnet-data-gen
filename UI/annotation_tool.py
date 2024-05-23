@@ -553,6 +553,11 @@ class MainWindow(QMainWindow):
             self.facialLandmarks.selectAll()
             self.facialLandmarks.draw()
 
+    def unSelectAll(self):
+        if self.facialLandmarks:
+            self.facialLandmarks.unSelectAll()
+            self.facialLandmarks.draw()
+
 
     def run_detection_for_all(self, number_of_images=10):
         self.leftControlPanel.runDetectionForAllButton.setEnabled(False)

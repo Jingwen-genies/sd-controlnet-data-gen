@@ -44,6 +44,7 @@ class ControlPanel(QWidget):
         self.nonExistButton = QPushButton('Set Not Existing (0)', self)
 
         self.selectAllButton = QPushButton("Select All")
+        self.unSelectAllButton = QPushButton("Unselect All")
 
         # control landmarks
         self.showEyesButton = self.setupSwitch("Eyes", default=True)
@@ -106,6 +107,7 @@ class ControlPanel(QWidget):
             self.invisibleButton,
             self.visibleButton,
             self.selectAllButton,
+            self.unSelectAllButton,
             self.saveAsTemplate,
             self.loadTemplate
         ]
@@ -138,6 +140,7 @@ class ControlPanel(QWidget):
         self.visibleButton.clicked.connect(lambda: self.mainWindow.setVisibility(2))
 
         self.selectAllButton.clicked.connect(lambda: self.mainWindow.selectAll())
+        self.unSelectAllButton.clicked.connect(lambda: self.mainWindow.unSelectAll())
         self.saveAsTemplate.clicked.connect(self.mainWindow.save_landmark_template)
         self.loadTemplate.clicked.connect(self.mainWindow.load_landmark_template)
 

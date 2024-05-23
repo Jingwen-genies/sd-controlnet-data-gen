@@ -124,7 +124,8 @@ class CustomGraphicsView(QGraphicsView):
         if self.selectedRect:
             print("Selecting points in rectangle")
             for point in self.parent.parent.facialLandmarks.landmarks:
-                if self.selectedRect.contains(QPointF(point.x, point.y)):
+                print(f"point {point.index} is visible: {point.show_in_canvas}")
+                if self.selectedRect.contains(QPointF(point.x, point.y)) and point.show_in_canvas:
                     point.set_selection_status(True)
                 else:
                     point.set_selection_status(False)

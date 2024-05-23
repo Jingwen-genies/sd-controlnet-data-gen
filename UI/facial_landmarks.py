@@ -195,6 +195,11 @@ class FacialLandmarks:
             kp.is_selected = True
             # kp.setBrush(QBrush(QColor(Qt.red)))
 
+    def unSelectAll(self):
+        for kp in self.landmarks:
+            kp.is_selected = False
+            # kp.setBrush(QBrush(QColor(Qt.yellow)))
+
     def getGroup(self, index):
         # return the group of the index where the index is in based on self.connections
         for key, value in self.connections.items():
