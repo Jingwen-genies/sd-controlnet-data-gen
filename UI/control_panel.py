@@ -24,6 +24,12 @@ class ControlPanel(QWidget):
         self.jumpButton.setSizePolicy(sizePolicy)
         self.imagePathLabel.setWordWrap(True)
         self.totalKeptLabel = QLabel("")
+        self.leftFaceInvisibleButton = QPushButton("Left jaw Invisible")
+        self.rightFaceInvisibleButton = QPushButton("Right jaw Invisible")
+
+        sub_layout_group_invisible = QHBoxLayout()
+        sub_layout_group_invisible.addWidget(self.leftFaceInvisibleButton)
+        sub_layout_group_invisible.addWidget(self.rightFaceInvisibleButton)
 
         sub_layout1 = QHBoxLayout()
         sub_layout1.addWidget(self.currentIndexLabel)
@@ -132,7 +138,16 @@ class ControlPanel(QWidget):
         self.setupSection(
             "Facial Landmarks",
             [],
-            [sub_layout_landmark_transparency, sub_layout_landmark, sub_layout_template, sub_layout_pupil, sub_layout_selection, sub_layout_visibility,  sub_layout2]
+            [
+                sub_layout_landmark_transparency,
+                sub_layout_landmark,
+                sub_layout_template,
+                sub_layout_pupil,
+                sub_layout_selection,
+                sub_layout_visibility,
+                sub_layout_group_invisible,
+                sub_layout2
+            ]
         )
         self.setupSection("Bbox", [], [sub_layout3])
         self.setupSection("io", io_buttons, [sub_layout4])
@@ -156,6 +171,9 @@ class ControlPanel(QWidget):
         self.nonExistButton.clicked.connect(lambda: self.mainWindow.setVisibility(0))
         self.invisibleButton.clicked.connect(lambda: self.mainWindow.setVisibility(1))
         self.visibleButton.clicked.connect(lambda: self.mainWindow.setVisibility(2))
+
+        self.leftFaceInvisibleButton.clicked.connect(lambda: self.mainWindow.setGroupVisibility("left_jaw", 1))
+        self.rightFaceInvisibleButton.clicked.connect(lambda: self.mainWindow.setGroupVisibility("right_jaw", 1))
 
         self.selectAllButton.clicked.connect(lambda: self.mainWindow.selectAll())
         self.unSelectAllButton.clicked.connect(lambda: self.mainWindow.unSelectAll())

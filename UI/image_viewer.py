@@ -3,7 +3,7 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QWidget, QGraphicsScene, QPushButton, QHBoxLayout, QGraphicsPixmapItem
 from PyQt5.QtCore import Qt
 
-from avatar_generation.UI.custom_graphics_view import CustomGraphicsView
+from UI.custom_graphics_view import CustomGraphicsView
 
 
 class ImageViewer(QWidget):

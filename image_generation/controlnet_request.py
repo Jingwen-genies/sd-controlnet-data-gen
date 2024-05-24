@@ -37,7 +37,7 @@ class ControlnetRequest:
         path,
         batch_size=1,
         steps=20,
-        sd_model_checkopint="v1-5-pruned-emaonly.safetensors",
+        sd_model_checkopint="dreamshaper_8.safetensors",
         control_net_checkpoint="control_v11p_sd15_openpose",
         preprocess_module=None,
     ):
@@ -63,46 +63,46 @@ class ControlnetRequest:
             "override_settings": {
                 "sd_model_checkpoint": self.sd_model_checkpoint,
             },
-            # "alwayson_scripts": {
-            #     "controlnet": {
-            #         "args": [
-            #             {
-            #                 "enabled": True,
-            #                 "module": self.preprocess_module,
-            #                 "model": self.control_net_checkpoint,
-            #                 "weight": 1.0,
-            #                 "image": self.read_image(),
-            #                 "resize_mode": 1,
-            #                 "lowvram": False,
-            #                 "processor_res": 512,
-            #                 "threshold_a": 64,
-            #                 "threshold_b": 64,
-            #                 "guidance_start": 0.0,
-            #                 "guidance_end": 1.0,
-            #                 "control_mode": 0,
-            #                 "pixel_perfect": False,
-            #             },
-            #             {
-            #                 "enabled": True,
-            #                 "module": "canny",
-            #                 "model": "lllyasvielsd-controlnet-canny",
-            #                 "weight": 1.0,
-            #                 "image": self.read_image(),
-            #                 "resize_mode": 1,
-            #                 "lowvram": False,
-            #                 "processor_res": 512,
-            #                 "threshold_a": 64,
-            #                 "threshold_b": 64,
-            #                 "guidance_start": 0.0,
-            #                 "guidance_end": 1.0,
-            #                 "control_mode": 0,
-            #                 "pixel_perfect": False,
+            "alwayson_scripts": {
+                "controlnet": {
+                    "args": [
+                        {
+                            "enabled": True,
+                            "module": 'depth',
+                            "model": 'lllyasvielsd-controlnet-depth',
+                            "weight": 1.0,
+                            "image": self.read_image(),
+                            "resize_mode": 1,
+                            "lowvram": False,
+                            "processor_res": 512,
+                            "threshold_a": 64,
+                            "threshold_b": 64,
+                            "guidance_start": 0.0,
+                            "guidance_end": 1.0,
+                            "control_mode": 0,
+                            "pixel_perfect": False,
+                        },
+                        {
+                            "enabled": True,
+                            "module": "canny",
+                            "model": "lllyasvielsd-controlnet-canny",
+                            "weight": 1.0,
+                            "image": self.read_image(),
+                            "resize_mode": 1,
+                            "lowvram": False,
+                            "processor_res": 512,
+                            "threshold_a": 64,
+                            "threshold_b": 64,
+                            "guidance_start": 0.0,
+                            "guidance_end": 1.0,
+                            "control_mode": 0,
+                            "pixel_perfect": False,
                               "Control Weight": 0.6,
-            #             }
-            #
-            #         ]
-            #     }
-            # },
+                        }
+
+                    ]
+                }
+            },
         }
 
     def send_request(self):

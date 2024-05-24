@@ -3,7 +3,7 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QPainter, QPen, QColor
 from PyQt5.QtWidgets import QGraphicsView
 
-from avatar_generation.UI.bbox import Bbox
+from UI.bbox import Bbox
 
 
 class CustomGraphicsView(QGraphicsView):
@@ -75,7 +75,11 @@ class CustomGraphicsView(QGraphicsView):
             print("LeftButten clicked and in bbox mode")
             self.startPoint = self.mapToScene(event.pos())
             if self.currentBbox:
-                self.currentBbox.remove()
+                try:
+                    print(f"removing current bbox {self.currentBbox}")
+                    self.currentBbox.remove()
+                except RuntimeError as e:
+                    print(f"Error removing bbox: {e}")
                 self.currentBbox = None
             self.currentBbox = Bbox(self.scene())
         elif event.button() == Qt.LeftButton and self.isSelectionMode:
@@ -91,7 +95,8 @@ class CustomGraphicsView(QGraphicsView):
             self._panStartX, self._panStartY = event.x(), event.y()
         elif self.isBboxMode and self.startPoint:
             endPoint = self.mapToScene(event.pos())
-            self.currentBbox.createOrUpdate(self.startPoint.x(), self.startPoint.y(), endPoint.x(), endPoint.y())
+            if self.currentBbox:
+                self.currentBbox.createOrUpdate(self.startPoint.x(), self.startPoint.y(), endPoint.x(), endPoint.y())
         elif self.isSelectionMode and self.startPoint and self.isLeftMousePressed:
             endPoint = self.mapToScene(event.pos())
             self.selectedRect = QRectF(self.startPoint, endPoint)

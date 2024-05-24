@@ -19,7 +19,9 @@ class FacialLandmarks:
             we should scale them by canvas size when drawing them
         """
         self.connections = {
-            "jaw": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            # "jaw": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            "left_jaw": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            "right_jaw": [8, 9, 10, 11, 12, 13, 14, 15, 16],
             "right_eyebrow": [17, 18, 19, 20, 21],
             "left_eyebrow": [22, 23, 24, 25, 26],
             "nose_bridge": [27, 28, 29, 30],
@@ -209,19 +211,21 @@ class FacialLandmarks:
                 elif key == "right_eye":
                     return key, set(value + [69])
                 elif key == "upper_lip":
-                    return key, set(value)
+                    return key, {49, 50, 51, 52, 53}
                 elif key == "lower_lip":
-                    return key, set([55, 56, 57, 58, 59,])
+                    return key, {55, 56, 57, 58, 59}
+                elif key == "left_jaw":
+                    return key, {0, 1, 2, 3, 4, 5, 6, 7}
+                elif key == "right_jaw":
+                    return key, {9, 10, 11, 12, 13, 14, 15, 16}
                 else:
                     return key, set(value)
 
-    # def moveGroup(self, index, offset):
-    #     # move the group of the index together with index
-    #     print(f"landmark: shift pressed: {self.view.shiftPressed}")
-    #     if self.view.shiftPressed:
-    #         group, indices = self.getGroup(index)
-    #         for idx in indices:
-    #             if idx != index:
-    #                 self.landmarks[idx].x += offset[0]
-    #                 self.landmarks[idx].y += offset[1]
-    #         self.draw()
+    def setGroupVisibility(self, group, visibility):
+        group_indices = self.connections[group]
+        if 8 in group_indices:
+            # remove 9
+            group_indices.remove(8)
+        for idx in group_indices:
+            self.landmarks[idx].setVisibility(visibility)
+

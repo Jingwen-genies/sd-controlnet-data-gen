@@ -26,12 +26,12 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="pytorch_lightn
 project_root = rootutils.setup_root(search_from=__file__, indicator=".project-root", dotenv=True, pythonpath=True,
                                     cwd=False)
 os.chdir(project_root)
-from avatar_generation.support.utils import read_openpose, read_json, write_json, generate_csv
-from avatar_generation.UI.facial_landmarks import FacialLandmarks
-from avatar_generation.UI.bbox import Bbox
-from avatar_generation.UI.client import create_json_request, get_landmarks_from_response
-from avatar_generation.UI.control_panel import ControlPanel
-from avatar_generation.UI.image_viewer import ImageViewer
+from support.utils import read_openpose, read_json, write_json, generate_csv
+from UI.facial_landmarks import FacialLandmarks
+from UI.bbox import Bbox
+from UI.client import create_json_request, get_landmarks_from_response
+from UI.control_panel import ControlPanel
+from UI.image_viewer import ImageViewer
 
 
 @dataclasses.dataclass
@@ -44,6 +44,10 @@ class csvRow:
 def detect_all(endpoint_name, csv_data_list, start_index, number_of_images=10):
     runtime_sm_client = boto3.client(service_name="sagemaker-runtime")
     for i in range(start_index, start_index + number_of_images):
+        if not csv_data_list[i].is_kept:
+            continue
+        if i >= len(csv_data_list):
+            break
         input_path = csv_data_list[i].image_path
         json_path = csv_data_list[i].landmark
         # run facial landmark detection for input_path
@@ -273,10 +277,10 @@ class MainWindow(QMainWindow):
     def load_control_image_csv(self):
         self.labeling_control_image = True
         csv_file = Path(
-            r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\inputs\synthetic_data_info.csv")
+            "./inputs/synthetic_data_info.csv")
         self.csv_path = csv_file
         if not csv_file.exists():
-            input_folder = Path(r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\inputs")
+            input_folder = Path("./inputs")
             generate_csv(input_folder, csv_file, overwrite=True, type="same_folder")
         self.load_csv(csv_file)
         self.currentIndex = 0
@@ -301,10 +305,10 @@ class MainWindow(QMainWindow):
     def load_training_image_csv(self):
         self.labeling_control_image = False
         csv_file = Path(
-            r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\outputs\synthetic_data_info.csv")
+            "./outputs/synthetic_data_info.csv")
         self.csv_path = csv_file
         if not csv_file.exists():
-            input_folder = Path(r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\outputs")
+            input_folder = Path("./outputs")
             generate_csv(input_folder, csv_file, overwrite=True)
         self.load_csv(csv_file)
         self.currentIndex = 0
@@ -335,8 +339,17 @@ class MainWindow(QMainWindow):
             )
             self.facialLandmarks.draw()
 
+    def setGroupVisibility(self, group, state):
+        if self.facialLandmarks:
+            self.facialLandmarks.setGroupVisibility(group, state)
+            self.facialLandmarks.draw()
+
+    def update_progress(self):
+        print("Updating progress")
+        progress = [1 if self.csvData_list[i].is_kept else 0 for i in range(self.currentIndex + 1)]
+        self.processed_kept = sum(progress)
+
     def update_curr_img_pose(self):
-        self.processed_kept += 1
         print("Loading image at index:", self.currentIndex)
         print(f"Current image path: {self.csvData_list[self.currentIndex].image_path}")
         if self.currentIndex < 0 or self.currentIndex >= len(self.csvData_list):
@@ -359,6 +372,7 @@ class MainWindow(QMainWindow):
         image_name = currentImagePath.parent.name + "/" + currentImagePath.name
         self.leftControlPanel.imagePathLabel.setText(f"{image_name}")
         self.leftControlPanel.currentIndexLabel.setText(f"Index: {self.currentIndex + 1} / {len(self.csvData_list)}")
+        self.update_progress()
         self.leftControlPanel.totalKeptLabel.setText(f"processed Kept: {self.processed_kept} / {self.total_kept}")
 
         # setup the toggle button values
