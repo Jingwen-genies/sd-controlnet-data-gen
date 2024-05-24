@@ -131,6 +131,8 @@ class MainWindow(QMainWindow):
 
         # set default csv as training csv (default labeling training data)
         self.load_training_image_csv()
+        self.leftControlPanel.totalKeptLabel.setText(f"Total Kept: {self.total_kept} / {len(self.csvData_list)}")
+        # self.leftControlPanel.endpointLabel.setText(f"Pick an endpoint from the dropdown. Current Endpoint: {self.endpoint}")
 
     def update_endpoint(self, selected_item):
         # Update self.endpoint with the selected item
@@ -349,12 +351,6 @@ class MainWindow(QMainWindow):
         elif self.landmark_template:
             print("Loading landmark template")
             self.load_landmark_template()
-        # else:
-        #     print("No landmark json found, no template found, run facial landmark detection")
-        #     self.run_facial_landmark_detection()
-        #     self.replace_landmark()
-        #     self.add_left_pupil()
-        #     self.add_right_pupil()
 
         # get the subfolder and the image name
         currentImagePath = Path(self.csvData_list[self.currentIndex].image_path)
@@ -362,7 +358,6 @@ class MainWindow(QMainWindow):
         image_name = currentImagePath.parent.name + "/" + currentImagePath.name
         self.leftControlPanel.imagePathLabel.setText(f"{image_name}")
         self.leftControlPanel.currentIndexLabel.setText(f"Index: {self.currentIndex + 1} / {len(self.csvData_list)}")
-        self.leftControlPanel.totalKeptLabel.setText(f"Total Kept: {self.total_kept} / {len(self.csvData_list)}")
 
         # setup the toggle button values
         self.toggleNose(True)

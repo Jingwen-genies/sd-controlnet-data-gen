@@ -95,8 +95,8 @@ class ControlPanel(QWidget):
         # model selection
         # Create a label to display the selected option
         sub_layout5 = QVBoxLayout()
-        self.label = QLabel("Select a endpoint from the dropdown", self)
-        sub_layout5.addWidget(self.label)
+        self.endpointLabel = QLabel("Pick an endpoint from the dropdown")
+        sub_layout5.addWidget(self.endpointLabel)
 
         # Create a QComboBox (dropdown menu)
         self.combo_box = QComboBox(self)
