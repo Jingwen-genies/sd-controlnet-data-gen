@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
         self.csv_path = ""
         self.landmark_template = None
         self.endpoint = "facial-landmark-app-v5" # default v5, can be changed in a dropdown
+        self.total_kept = 0
 
         menuBar = self.menuBar()
         fileMenu = menuBar.addMenu('&File')
@@ -275,16 +276,25 @@ class MainWindow(QMainWindow):
         if not csv_file.exists():
             input_folder = Path(r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\inputs")
             generate_csv(input_folder, csv_file, overwrite=True, type="same_folder")
+        self.load_csv(csv_file)
+        self.currentIndex = 0
+        self.update_curr_img_pose()
+
+    def load_csv(self, csv_file):
+        self.total_kept = 0
         with open(csv_file, 'r') as file:
             for line in file:
                 if line.startswith('image'):
                     continue
                 data = line.split(',')
+                is_kept = data[2]
+                if type(is_kept) == str:
+                    is_kept = is_kept.strip().strip('"') == "True"
+                if is_kept:
+                    self.total_kept += 1
+                self.csvData_list.append(csvRow(data[0], data[1], is_kept))
+        print(f"Total number of images: {len(self.csvData_list)}, number of kept images: {self.total_kept}")
 
-                self.csvData_list.append(csvRow(data[0], data[1], data[2]))
-        self.currentIndex = 0
-        print(f"loading 0th image: {self.csvData_list[0].image_path}")
-        self.update_curr_img_pose()
 
     def load_training_image_csv(self):
         self.labeling_control_image = False
@@ -294,12 +304,7 @@ class MainWindow(QMainWindow):
         if not csv_file.exists():
             input_folder = Path(r"C:\Users\Jingwen\Documents\projs\stable-diffusion-webui\avatar_generation\outputs")
             generate_csv(input_folder, csv_file, overwrite=True)
-        with open(csv_file, 'r') as file:
-            for line in file:
-                if line.startswith('image'):
-                    continue
-                data = line.split(',')
-                self.csvData_list.append(csvRow(data[0], data[1], data[2]))
+        self.load_csv(csv_file)
         self.currentIndex = 0
         self.update_curr_img_pose()
 
@@ -357,6 +362,7 @@ class MainWindow(QMainWindow):
         image_name = currentImagePath.parent.name + "/" + currentImagePath.name
         self.leftControlPanel.imagePathLabel.setText(f"{image_name}")
         self.leftControlPanel.currentIndexLabel.setText(f"Index: {self.currentIndex + 1} / {len(self.csvData_list)}")
+        self.leftControlPanel.totalKeptLabel.setText(f"Total Kept: {self.total_kept} / {len(self.csvData_list)}")
 
         # setup the toggle button values
         self.toggleNose(True)
@@ -367,13 +373,10 @@ class MainWindow(QMainWindow):
         self.leftControlPanel.showNoseButton.setChecked(True)
         self.leftControlPanel.showMouseButton.setChecked(True)
         self.leftControlPanel.showOutlineButton.setChecked(True)
-        self.leftControlPanel.addBboxSwitch.setChecked(False)
 
         # assign opposite value to the is_discard value of self.csvData_list[self.currentIndex].is_kept
         # strip the string and compare with "True" to get the boolean value
         is_kept = self.csvData_list[self.currentIndex].is_kept
-        if type(is_kept) == str:
-            is_kept = is_kept.strip().strip('"') == "True"
         # is_kept = self.csvData_list[self.currentIndex].is_kept.strip().strip('"') == "True"
 
         is_discard = not is_kept
@@ -384,16 +387,31 @@ class MainWindow(QMainWindow):
             self.save_everything()
         print("Previous image")
         self.currentIndex -= 1
-        self.resetScene()
-        self.update_curr_img_pose()
+        while self.currentIndex > 0:
+            current_data = self.csvData_list[self.currentIndex]
+            if current_data.is_kept:  # Assuming csvData_list contains dictionaries
+                self.resetScene()
+                self.update_curr_img_pose()
+                return
+            else:
+                self.currentIndex -= 1  # Skip to the next image
+        print("No more images to process.")
+
 
     def next_image(self):
         if self.facialLandmarks is not None:
             self.save_everything()
         print("Next image")
         self.currentIndex += 1
-        self.resetScene()
-        self.update_curr_img_pose()
+        while self.currentIndex < len(self.csvData_list):
+            current_data = self.csvData_list[self.currentIndex]
+            if current_data.is_kept:  # Assuming csvData_list contains dictionaries
+                self.resetScene()
+                self.update_curr_img_pose()
+                return
+            else:
+                self.currentIndex += 1  # Skip to the next image
+        print("No more images to process.")
 
     def load_json(self, landmark_path):
         if self.currentIndex < 0 or self.currentIndex >= len(self.csvData_list):
@@ -539,6 +557,7 @@ class MainWindow(QMainWindow):
             if 0 <= index < len(self.csvData_list):
                 print("Jumping to index:", index)
                 self.currentIndex = index
+                self.resetScene()
                 self.update_curr_img_pose()
             else:
                 QMessageBox.warning(self, "Error", "Index out of range.")

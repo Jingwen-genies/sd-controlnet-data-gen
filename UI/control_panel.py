@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QLabel, QFrame, QCheckBox, QPushButton, QHBoxLayout, QSlider, QLineEdit, QVBoxLayout, \
-    QWidget, QComboBox
+    QWidget, QComboBox, QSizePolicy
 from PyQt5.QtCore import Qt, pyqtSignal
 
 
@@ -7,7 +7,7 @@ class ControlPanel(QWidget):
     selectionChanged = pyqtSignal(str)  # Define a custom signal
     def __init__(self, mainWindow, parent=None):
         super(ControlPanel, self).__init__(parent)
-        self.maxWidth = 600
+        self.maxWidth = 420
 
         self.setFixedWidth(self.maxWidth + 10)
         self.mainWindow = mainWindow
@@ -19,32 +19,48 @@ class ControlPanel(QWidget):
         self.imagePathLabel = QLabel("")
         self.currentIndexLabel = QLabel("Index: 0 / 0")
         self.indexInput = QLineEdit()
-        self.jumpButton = QPushButton("Jump To Index")
+        self.jumpButton = QPushButton("Jump Index")
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.jumpButton.setSizePolicy(sizePolicy)
         self.imagePathLabel.setWordWrap(True)
+        self.totalKeptLabel = QLabel("Total Kept: 0")
 
         sub_layout1 = QHBoxLayout()
         sub_layout1.addWidget(self.currentIndexLabel)
         sub_layout1.addWidget(self.indexInput)
         sub_layout1.addWidget(self.jumpButton)
+        sub_layout1.addWidget(self.totalKeptLabel)
 
         # sliding scale for transparency
         self.transparencySlider = QSlider(Qt.Horizontal)
         self.transparencySlider.setRange(0, 100)
         self.transparencySlider.setValue(100)
-        self.transparencySlider.setFixedWidth(self.maxWidth - 10)
+        # self.transparencySlider.setFixedWidth(self.maxWidth - 10)
         self.hideLandmarkIndexButton = QPushButton("Hide Landmark Index")
+        self.hideLandmarkIndexButton.setSizePolicy(sizePolicy)
         self.runFacialLandmarkDetectionButton = QPushButton("Run Facial Landmark Detection")
         self.replaceButton = QPushButton("Replace Landmark")
         self.loadInitialLandmarksButton = QPushButton("Load Initial Landmarks")
+
         self.addLeftPupilButton = QPushButton("Add Left Pupil")
         self.addRightPupilButton = QPushButton("Add Right Pupil")
+        sub_layout_pupil = QHBoxLayout()
+        sub_layout_pupil.addWidget(self.addLeftPupilButton)
+        sub_layout_pupil.addWidget(self.addRightPupilButton)
 
         self.visibleButton = QPushButton('Set Visible (2)', self)
         self.invisibleButton = QPushButton('Set Invisible (1)', self)
         self.nonExistButton = QPushButton('Set Not Existing (0)', self)
+        sub_layout_visibility = QHBoxLayout()
+        sub_layout_visibility.addWidget(self.visibleButton)
+        sub_layout_visibility.addWidget(self.invisibleButton)
+        sub_layout_visibility.addWidget(self.nonExistButton)
 
         self.selectAllButton = QPushButton("Select All")
         self.unSelectAllButton = QPushButton("Unselect All")
+        sub_layout_selection = QHBoxLayout()
+        sub_layout_selection.addWidget(self.selectAllButton)
+        sub_layout_selection.addWidget(self.unSelectAllButton)
 
         # control landmarks
         self.showEyesButton = self.setupSwitch("Eyes", default=True)
@@ -84,9 +100,9 @@ class ControlPanel(QWidget):
 
         # Create a QComboBox (dropdown menu)
         self.combo_box = QComboBox(self)
-        self.combo_box.addItem("facial-landmark-app-v2")
-        self.combo_box.addItem("facial-landmark-app-v4")
         self.combo_box.addItem("facial-landmark-app-v5")
+        self.combo_box.addItem("facial-landmark-app-v4")
+        self.combo_box.addItem("facial-landmark-app-v2")
 
         # Connect the selection change event to a handler
         sub_layout5.addWidget(self.combo_box)
@@ -96,29 +112,31 @@ class ControlPanel(QWidget):
             self.imagePathLabel,
         ]
         # buttons
-        landmark_buttons = [
-            self.transparencySlider,
-            self.hideLandmarkIndexButton,
-            self.runFacialLandmarkDetectionButton,
-            self.replaceButton,
-            self.addLeftPupilButton,
-            self.addRightPupilButton,
-            self.nonExistButton,
-            self.invisibleButton,
-            self.visibleButton,
-            self.selectAllButton,
-            self.unSelectAllButton,
-            self.saveAsTemplate,
-            self.loadTemplate
-        ]
+
         io_buttons = [self.discardButton, self.saveFacialLandmarkImage, self.saveButton]
 
+        sub_layout_landmark_transparency = QHBoxLayout()
+        sub_layout_landmark_transparency.addWidget(self.transparencySlider)
+        sub_layout_landmark_transparency.addWidget(self.hideLandmarkIndexButton)
+
+        sub_layout_landmark = QHBoxLayout()
+        sub_layout_landmark.addWidget(self.runFacialLandmarkDetectionButton)
+        sub_layout_landmark.addWidget(self.replaceButton)
+
+        sub_layout_template = QHBoxLayout()
+        sub_layout_template.addWidget(self.saveAsTemplate)
+        sub_layout_template.addWidget(self.loadTemplate)
+
         ##################### Layout ############################
-        self.setupSection("Information", info_buttons, sub_layout1)
-        self.setupSection("Facial Landmarks", landmark_buttons, sub_layout2)
-        self.setupSection("Bbox", [], sub_layout3)
-        self.setupSection("io", io_buttons, sub_layout4)
-        self.setupSection("Model Selection", [], sub_layout5)
+        self.setupSection("Information", info_buttons, [sub_layout1])
+        self.setupSection(
+            "Facial Landmarks",
+            [],
+            [sub_layout_landmark_transparency, sub_layout_landmark, sub_layout_template, sub_layout_pupil, sub_layout_selection, sub_layout_visibility,  sub_layout2]
+        )
+        self.setupSection("Bbox", [], [sub_layout3])
+        self.setupSection("io", io_buttons, [sub_layout4])
+        self.setupSection("Model Selection", [], [sub_layout5])
 
 
         self.layout.setSpacing(mainWindow.hButtonSpace)  # 设置控件之间的间距
@@ -175,13 +193,14 @@ class ControlPanel(QWidget):
         h_divider.setFixedWidth(self.maxWidth + 10)
         self.layout.addWidget(h_divider)
 
-    def setupSection(self, name, widget_list, sub_layout=None):
+    def setupSection(self, name, widget_list, sub_layouts=[]):
         self.setupDivider(name)
         for button in widget_list:
             self.layout.addWidget(button)
             button.setFixedWidth(self.maxWidth)
-        if sub_layout:
-            self.layout.addLayout(sub_layout)
+        if sub_layouts:
+            for sub_layout in sub_layouts:
+                self.layout.addLayout(sub_layout)
         self.layout.addSpacing(30)
 
     def setupSwitch(self, name, default=False):

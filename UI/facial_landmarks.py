@@ -27,7 +27,7 @@ class FacialLandmarks:
             "right_eye": [36, 37, 38, 39, 40, 41, 36],
             "left_eye": [42, 43, 44, 45, 46, 47, 42],
             "upper_lip": [48, 49, 50, 51, 52, 53, 54],
-            "lower_lip": [55, 54, 55, 56, 57, 58, 59],
+            "lower_lip": [54, 55, 56, 57, 58, 59, 48],
             "upper_inner_lip": [60, 61, 62, 63, 64],
             "lower_inner_lip": [65, 66, 67],
             "left_pupil": [68],
@@ -208,6 +208,10 @@ class FacialLandmarks:
                     return key, set(value + [68])
                 elif key == "right_eye":
                     return key, set(value + [69])
+                elif key == "upper_lip":
+                    return key, set(value)
+                elif key == "lower_lip":
+                    return key, set([55, 56, 57, 58, 59,])
                 else:
                     return key, set(value)
 

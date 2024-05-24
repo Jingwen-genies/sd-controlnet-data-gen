@@ -5,7 +5,7 @@ from PyQt5.QtGui import  QFont
 
 
 class Keypoint(QGraphicsEllipseItem):
-    def __init__(self, poseObj,  x, y, visibility, radius=2, parent=None, index=0, color=Qt.yellow):
+    def __init__(self, poseObj,  x, y, visibility, radius=2.5, parent=None, index=0, color=Qt.yellow):
         super().__init__(x - radius, y - radius, 2 * radius, 2 * radius, parent)
         self.poseObj = poseObj
         self.x = x

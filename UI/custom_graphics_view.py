@@ -75,6 +75,7 @@ class CustomGraphicsView(QGraphicsView):
             print("LeftButten clicked and in bbox mode")
             self.startPoint = self.mapToScene(event.pos())
             if self.currentBbox:
+                self.currentBbox.remove()
                 self.currentBbox = None
             self.currentBbox = Bbox(self.scene())
         elif event.button() == Qt.LeftButton and self.isSelectionMode:
