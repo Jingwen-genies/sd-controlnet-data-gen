@@ -151,13 +151,13 @@ class MainWindow(QMainWindow):
             self.prev_image()
         elif event.key() == Qt.Key_Right or event.key() == Qt.Key_D:
             self.next_image()
-        elif event.key() == Qt.Key_E:
-            if self.facialLandmarks:
-                self.hide_landmarks()
-            self.run_facial_landmark_detection()
-            self.replace_landmark()
-            self.add_left_pupil()
-            self.add_right_pupil()
+        # elif event.key() == Qt.Key_E:
+        #     if self.facialLandmarks:
+        #         self.hide_landmarks()
+        #     self.run_facial_landmark_detection()
+        #     self.replace_landmark()
+        #     self.add_left_pupil()
+        #     self.add_right_pupil()
         # Enter key runs jump to index and numpad enter key runs save landmarks
         elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
             self.jump_to_index()
@@ -167,6 +167,12 @@ class MainWindow(QMainWindow):
             self.write_data_to_csv()
         elif event.key() == Qt.Key_V:
             self.setVisibility(2)
+        # number 1
+        elif event.key() == Qt.Key_Q:
+            self.setGroupVisibility("left_jaw", 1)
+        # 2
+        elif event.key() == Qt.Key_W:
+            self.setGroupVisibility("right_jaw", 1)
         else:
             super().keyPressEvent(event)
 
