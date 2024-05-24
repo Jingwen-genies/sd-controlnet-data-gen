@@ -23,7 +23,7 @@ class ControlPanel(QWidget):
         sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.jumpButton.setSizePolicy(sizePolicy)
         self.imagePathLabel.setWordWrap(True)
-        self.totalKeptLabel = QLabel("Total Kept: 0")
+        self.totalKeptLabel = QLabel("")
 
         sub_layout1 = QHBoxLayout()
         sub_layout1.addWidget(self.currentIndexLabel)

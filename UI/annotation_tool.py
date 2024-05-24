@@ -97,6 +97,7 @@ class MainWindow(QMainWindow):
         self.landmark_template = None
         self.endpoint = "facial-landmark-app-v5" # default v5, can be changed in a dropdown
         self.total_kept = 0
+        self.processed_kept = 0
 
         menuBar = self.menuBar()
         fileMenu = menuBar.addMenu('&File')
@@ -131,7 +132,6 @@ class MainWindow(QMainWindow):
 
         # set default csv as training csv (default labeling training data)
         self.load_training_image_csv()
-        self.leftControlPanel.totalKeptLabel.setText(f"Total Kept: {self.total_kept} / {len(self.csvData_list)}")
         # self.leftControlPanel.endpointLabel.setText(f"Pick an endpoint from the dropdown. Current Endpoint: {self.endpoint}")
 
     def update_endpoint(self, selected_item):
@@ -336,6 +336,7 @@ class MainWindow(QMainWindow):
             self.facialLandmarks.draw()
 
     def update_curr_img_pose(self):
+        self.processed_kept += 1
         print("Loading image at index:", self.currentIndex)
         print(f"Current image path: {self.csvData_list[self.currentIndex].image_path}")
         if self.currentIndex < 0 or self.currentIndex >= len(self.csvData_list):
@@ -358,6 +359,7 @@ class MainWindow(QMainWindow):
         image_name = currentImagePath.parent.name + "/" + currentImagePath.name
         self.leftControlPanel.imagePathLabel.setText(f"{image_name}")
         self.leftControlPanel.currentIndexLabel.setText(f"Index: {self.currentIndex + 1} / {len(self.csvData_list)}")
+        self.leftControlPanel.totalKeptLabel.setText(f"processed Kept: {self.processed_kept} / {self.total_kept}")
 
         # setup the toggle button values
         self.toggleNose(True)
